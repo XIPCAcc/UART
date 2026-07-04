@@ -1,44 +1,86 @@
-use thiserror::Error;
+use std::error::Error;
+use std::fmt;
 
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum FrameError {
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
-
-    #[error("read timeout, incomplete frame")]
+    Io(std::io::Error),
     Timeout,
-
-    #[error("CRC8 mismatch: expected {expected:#04x}, got {actual:#04x}")]
     CrcMismatch { expected: u8, actual: u8 },
-
-    #[error("invalid frame format")]
     InvalidFrame,
-
-    #[error("frame too large: {0} bytes exceeds MAX_PAYLOAD_LEN")]
     Oversize(usize),
 }
 
-#[derive(Error, Debug, Clone, Copy)]
+impl fmt::Display for FrameError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FrameError::Io(e) => write!(f, "I/O error: {e}"),
+            FrameError::Timeout => write!(f, "read timeout, incomplete frame"),
+            FrameError::CrcMismatch { expected, actual } => {
+                write!(f, "CRC8 mismatch: expected {expected:#04x}, got {actual:#04x}")
+            }
+            FrameError::InvalidFrame => write!(f, "invalid frame format"),
+            FrameError::Oversize(n) => write!(f, "frame too large: {n} bytes exceeds MAX_PAYLOAD_LEN"),
+        }
+    }
+}
+
+impl Error for FrameError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            FrameError::Io(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<std::io::Error> for FrameError {
+    fn from(e: std::io::Error) -> Self {
+        FrameError::Io(e)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 #[repr(u8)]
 pub enum ComputeError {
-    #[error("dimension mismatch: COLS_A != ROWS_B")]
     DimensionMismatch = 0x01,
-
-    #[error("CRC verification failed")]
     CrcError = 0x02,
-
-    #[error("malformed frame")]
     InvalidFrame = 0x03,
-
-    #[error("data overflow")]
     DataOverflow = 0x04,
 }
 
-#[derive(Error, Debug)]
-pub enum AppError {
-    #[error("serial port error: {0}")]
-    Serial(#[from] serialport::Error),
+impl fmt::Display for ComputeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ComputeError::DimensionMismatch => write!(f, "dimension mismatch: COLS_A != ROWS_B"),
+            ComputeError::CrcError => write!(f, "CRC verification failed"),
+            ComputeError::InvalidFrame => write!(f, "malformed frame"),
+            ComputeError::DataOverflow => write!(f, "data overflow"),
+        }
+    }
+}
 
-    #[error("signal registration failed: {0}")]
+impl Error for ComputeError {}
+
+#[derive(Debug)]
+pub enum AppError {
+    Serial(std::io::Error),
     Signal(String),
+}
+
+impl fmt::Display for AppError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            AppError::Serial(e) => write!(f, "serial port error: {e}"),
+            AppError::Signal(s) => write!(f, "signal registration failed: {s}"),
+        }
+    }
+}
+
+impl Error for AppError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            AppError::Serial(e) => Some(e),
+            _ => None,
+        }
+    }
 }

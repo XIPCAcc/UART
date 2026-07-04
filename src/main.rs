@@ -1,55 +1,43 @@
+use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-
-use clap::Parser;
-use log::{error, info, warn};
 
 mod compute;
 mod error;
 mod frame_reader;
 mod protocol;
 mod serial_io;
-
-#[derive(Parser, Debug)]
-#[command(name = "uart-matmul", about = "Serial port matrix multiplication daemon")]
-struct Cli {
-    /// Serial port device path
-    #[arg(short, long, default_value = "/dev/ttyS0")]
-    port: String,
-
-    /// Baud rate
-    #[arg(short, long, default_value_t = 115200)]
-    baud: u32,
-
-    /// Read timeout in milliseconds
-    #[arg(short, long, default_value_t = 100)]
-    timeout: u64,
-}
+mod sys;
 
 fn main() -> Result<(), error::AppError> {
-    env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
-        .init();
-
-    let cli = Cli::parse();
+    let (port, baud, timeout) = parse_args();
 
     let term = Arc::new(AtomicBool::new(false));
-    signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
-        .map_err(|e| error::AppError::Signal(e.to_string()))?;
-    signal_hook::flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term))
-        .map_err(|e| error::AppError::Signal(e.to_string()))?;
+    register_signals(&term)?;
 
-    info!("Opening {} @ {} baud, timeout {}ms", cli.port, cli.baud, cli.timeout);
+    eprintln!("[INFO] Opening {port} @ {baud} baud, timeout {timeout}ms");
 
-    let mut port = serial_io::open(&cli.port, cli.baud, cli.timeout)?;
+    let fd = serial_io::open(&port, baud, timeout).map_err(error::AppError::Serial)?;
     let mut reader = frame_reader::FrameReader::new();
 
-    info!("Ready, entering main loop");
+    eprintln!("[INFO] Ready, entering main loop");
 
+    let result = run_main_loop(fd, &mut reader, &term);
+
+    unsafe { sys::close(fd) };
+    eprintln!("[INFO] Shutting down");
+    result
+}
+
+fn run_main_loop(
+    fd: RawFd,
+    reader: &mut frame_reader::FrameReader,
+    term: &AtomicBool,
+) -> Result<(), error::AppError> {
     while !term.load(Ordering::Relaxed) {
-        match reader.read_frame(port.as_mut()) {
+        match reader.read_frame(fd) {
             Ok(frame) => {
-                info!("Received frame: {}", frame_summary(&frame));
+                eprintln!("[INFO] Received frame: {}", frame_summary(&frame));
                 let response = match compute::process_frame(&frame) {
                     Ok(result) => protocol::Frame::Result {
                         dims: protocol::MatrixDims {
@@ -59,38 +47,43 @@ fn main() -> Result<(), error::AppError> {
                         data: result.data,
                     },
                     Err(e) => {
-                        warn!("Compute error: {}", e);
+                        eprintln!("[WARN] Compute error: {e}");
                         protocol::Frame::Error { code: e as u8 }
                     }
                 };
-                if let Err(e) = serial_io::write_frame(&mut port, &response) {
-                    error!("Write error: {}", e);
+                if let Err(e) = serial_io::write_frame(fd, &response) {
+                    eprintln!("[ERROR] Write error: {e}");
                 }
             }
             Err(error::FrameError::Timeout) => {
                 // Normal timeout, continue loop
             }
             Err(error::FrameError::CrcMismatch { expected, actual }) => {
-                warn!("CRC mismatch: expected {expected:#04x}, got {actual:#04x}");
+                eprintln!("[WARN] CRC mismatch: expected {expected:#04x}, got {actual:#04x}");
                 let err = protocol::Frame::Error {
                     code: error::ComputeError::CrcError as u8,
                 };
-                let _ = serial_io::write_frame(&mut port, &err);
+                let _ = serial_io::write_frame(fd, &err);
             }
             Err(e) => {
-                warn!("Frame read error: {}", e);
+                eprintln!("[WARN] Frame read error: {e}");
             }
         }
     }
-
-    info!("Shutting down");
     Ok(())
 }
 
 fn frame_summary(frame: &protocol::Frame) -> String {
     match frame {
         protocol::Frame::Request { dims_a, dims_b, data } => {
-            format!("Request A={}x{} B={}x{} ({} floats)", dims_a.rows, dims_a.cols, dims_b.rows, dims_b.cols, data.len())
+            format!(
+                "Request A={}x{} B={}x{} ({} floats)",
+                dims_a.rows,
+                dims_a.cols,
+                dims_b.rows,
+                dims_b.cols,
+                data.len()
+            )
         }
         protocol::Frame::Result { dims, data } => {
             format!("Result {}x{} ({} floats)", dims.rows, dims.cols, data.len())
@@ -99,4 +92,93 @@ fn frame_summary(frame: &protocol::Frame) -> String {
             format!("Error code {code:#04x}")
         }
     }
+}
+
+// ── CLI parsing ─────────────────────────────────────────────
+
+fn parse_args() -> (String, u32, u64) {
+    let args: Vec<String> = std::env::args().collect();
+    let mut port = String::from("/dev/ttyS0");
+    let mut baud = 115200u32;
+    let mut timeout = 100u64;
+
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--port" | "-p" => {
+                i += 1;
+                if i < args.len() {
+                    port = args[i].clone();
+                }
+            }
+            "--baud" | "-b" => {
+                i += 1;
+                if i < args.len() {
+                    baud = args[i].parse().unwrap_or(115200);
+                }
+            }
+            "--timeout" | "-t" => {
+                i += 1;
+                if i < args.len() {
+                    timeout = args[i].parse().unwrap_or(100);
+                }
+            }
+            "--help" | "-h" => {
+                print_help();
+                std::process::exit(0);
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    (port, baud, timeout)
+}
+
+fn print_help() {
+    println!(
+        "uart-matmul - Serial port matrix multiplication daemon\n\
+         \n\
+         USAGE:\n    uart-matmul [OPTIONS]\n\
+         \n\
+         OPTIONS:\n    \
+         -p, --port <PORT>        Serial port device [default: /dev/ttyS0]\n    \
+         -b, --baud <RATE>        Baud rate [default: 115200]\n    \
+         -t, --timeout <MS>       Read timeout in milliseconds [default: 100]\n    \
+         -h, --help               Print help"
+    );
+}
+
+// ── signal handling ─────────────────────────────────────────
+
+extern "C" fn handle_signal(_: std::ffi::c_int) {
+    // We need to set a global, but we can't access the Arc from here.
+    // Use a static AtomicBool.
+    SIGNAL_FLAG.store(true, Ordering::Relaxed);
+}
+
+static SIGNAL_FLAG: AtomicBool = AtomicBool::new(false);
+
+fn register_signals(term: &Arc<AtomicBool>) -> Result<(), error::AppError> {
+    let prev_int = unsafe { sys::signal(sys::SIGINT, handle_signal as usize) };
+    if prev_int == usize::MAX {
+        return Err(error::AppError::Signal("SIGINT".into()));
+    }
+    let prev_term = unsafe { sys::signal(sys::SIGTERM, handle_signal as usize) };
+    if prev_term == usize::MAX {
+        return Err(error::AppError::Signal("SIGTERM".into()));
+    }
+
+    // Spawn a thread to poll the signal flag and propagate to the Arc
+    let term_clone = Arc::clone(term);
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            if SIGNAL_FLAG.load(Ordering::Relaxed) {
+                term_clone.store(true, Ordering::Relaxed);
+                break;
+            }
+        }
+    });
+
+    Ok(())
 }

@@ -1,9 +1,10 @@
 use std::collections::VecDeque;
-
-use serialport::SerialPort;
+use std::io;
+use std::os::unix::io::RawFd;
 
 use crate::error::FrameError;
 use crate::protocol::{self, Frame, HEAD_BYTE, MAX_PAYLOAD_LEN};
+use crate::sys;
 
 enum ReadState {
     Syncing,
@@ -25,15 +26,12 @@ impl FrameReader {
         }
     }
 
-    pub fn read_frame(
-        &mut self,
-        port: &mut dyn SerialPort,
-    ) -> Result<Frame, FrameError> {
+    pub fn read_frame(&mut self, fd: RawFd) -> Result<Frame, FrameError> {
         loop {
             if let Some(result) = self.try_advance() {
                 return result;
             }
-            self.fill_from_port(port)?;
+            self.fill_from_port(fd)?;
         }
     }
 
@@ -43,7 +41,6 @@ impl FrameReader {
     fn try_advance(&mut self) -> Option<Result<Frame, FrameError>> {
         match &mut self.state {
             ReadState::Syncing => {
-                // Discard non-HEAD bytes
                 while let Some(&b) = self.buffer.front() {
                     if b == HEAD_BYTE {
                         break;
@@ -53,10 +50,9 @@ impl FrameReader {
                 if self.buffer.is_empty() {
                     return None;
                 }
-                // Found HEAD byte, consume it
                 self.buffer.pop_front();
                 self.state = ReadState::ReadingLen;
-                self.try_advance() // tail-call: try next state immediately
+                self.try_advance()
             }
             ReadState::ReadingLen => {
                 if self.buffer.len() < 2 {
@@ -74,17 +70,14 @@ impl FrameReader {
                 self.try_advance()
             }
             ReadState::ReadingData { len } => {
-                // Need len bytes of payload + 1 byte CRC
                 let total_needed = *len as usize + 1;
                 if self.buffer.len() < total_needed {
                     return None;
                 }
 
-                // Drain payload
                 let payload: Vec<u8> = self.buffer.drain(..*len as usize).collect();
                 let crc_byte = self.buffer.pop_front().unwrap();
 
-                // CRC covers LEN bytes + payload
                 let mut crc_data = len.to_le_bytes().to_vec();
                 crc_data.extend_from_slice(&payload);
                 let expected_crc = protocol::crc8(&crc_data);
@@ -103,27 +96,24 @@ impl FrameReader {
         }
     }
 
-    fn fill_from_port(&mut self, port: &mut dyn SerialPort) -> Result<(), FrameError> {
+    fn fill_from_port(&mut self, fd: RawFd) -> Result<(), FrameError> {
         if self.buffer.len() > MAX_PAYLOAD_LEN * 2 {
             self.buffer.clear();
             self.state = ReadState::Syncing;
         }
 
         let mut tmp = [0u8; 512];
-        match port.read(&mut tmp) {
-            Ok(0) => Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "serial port returned 0 bytes",
-            )
-            .into()),
+        match sys::raw_read(fd, &mut tmp) {
+            Ok(0) => Err(FrameError::Timeout),
             Ok(n) => {
                 self.buffer.extend(&tmp[..n]);
                 Ok(())
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
+                // signal interrupted the read, treat as timeout
                 Err(FrameError::Timeout)
             }
-            Err(e) => Err(e.into()),
+            Err(e) => Err(FrameError::Io(e)),
         }
     }
 }
@@ -137,7 +127,6 @@ mod tests {
     fn test_error_frame_from_buffer() {
         let frame = Frame::Error { code: 0x01 };
         let bytes = frame.to_bytes();
-        // Prepend noise
         let mut input = vec![0x00, 0xFF, 0x55];
         input.extend_from_slice(&bytes);
 
@@ -185,7 +174,6 @@ mod tests {
         let bytes = frame.to_bytes();
 
         let mut reader = FrameReader::new();
-        // Feed only first 2 bytes (HEAD + partial LEN)
         reader.buffer.extend(&bytes[..2]);
 
         let result = reader.try_advance();
@@ -196,7 +184,6 @@ mod tests {
     fn test_crc_mismatch_detected() {
         let frame = Frame::Error { code: 0x01 };
         let mut bytes = frame.to_bytes();
-        // Corrupt the CRC byte
         let last = bytes.len() - 1;
         bytes[last] ^= 0xFF;
 

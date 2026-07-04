@@ -1,5 +1,3 @@
-use nalgebra::DMatrix;
-
 use crate::error::ComputeError;
 use crate::protocol::Frame;
 
@@ -15,38 +13,42 @@ pub fn process_frame(frame: &Frame) -> Result<MatrixResult, ComputeError> {
         return Err(ComputeError::InvalidFrame);
     };
 
-    if dims_a.cols != dims_b.rows {
+    let a_rows = dims_a.rows as usize;
+    let a_cols = dims_a.cols as usize;
+    let b_cols = dims_b.cols as usize;
+
+    if a_cols != dims_b.rows as usize {
         return Err(ComputeError::DimensionMismatch);
     }
 
-    let a_count = dims_a.rows as usize * dims_a.cols as usize;
-    let b_count = dims_b.rows as usize * dims_b.cols as usize;
+    let a_count = a_rows * a_cols;
+    let b_count = a_cols * b_cols;
 
     if data.len() != a_count + b_count {
         return Err(ComputeError::InvalidFrame);
     }
 
-    let a_data = &data[..a_count];
-    let b_data = &data[a_count..];
+    let a = &data[..a_count];
+    let b = &data[a_count..];
 
-    let a = DMatrix::from_row_slice(dims_a.rows as usize, dims_a.cols as usize, a_data);
-    let b = DMatrix::from_row_slice(dims_b.rows as usize, dims_b.cols as usize, b_data);
+    let result_rows = a_rows;
+    let result_cols = b_cols;
+    let mut result = vec![0.0f32; result_rows * result_cols];
 
-    let result = &a * &b;
-
-    let rows = result.nrows();
-    let cols = result.ncols();
-    let mut data = Vec::with_capacity(rows * cols);
-    for i in 0..rows {
-        for j in 0..cols {
-            data.push(result[(i, j)]);
+    for i in 0..result_rows {
+        for j in 0..result_cols {
+            let mut sum = 0.0f32;
+            for k in 0..a_cols {
+                sum += a[i * a_cols + k] * b[k * b_cols + j];
+            }
+            result[i * result_cols + j] = sum;
         }
     }
 
     Ok(MatrixResult {
         rows: dims_a.rows,
         cols: dims_b.cols,
-        data,
+        data: result,
     })
 }
 
@@ -73,8 +75,6 @@ mod tests {
 
     #[test]
     fn test_2x3_times_3x2() {
-        // A = [[1,2,3],[4,5,6]], B = [[7,8],[9,10],[11,12]]
-        // A*B = [[58,64],[139,154]]
         let frame = Frame::Request {
             dims_a: MatrixDims { rows: 2, cols: 3 },
             dims_b: MatrixDims { rows: 3, cols: 2 },
