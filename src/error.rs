@@ -4,7 +4,6 @@ use std::fmt;
 #[derive(Debug)]
 pub enum FrameError {
     Io(std::io::Error),
-    Timeout,
     CrcMismatch { expected: u8, actual: u8 },
     InvalidFrame,
     Oversize(usize),
@@ -14,7 +13,6 @@ impl fmt::Display for FrameError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             FrameError::Io(e) => write!(f, "I/O error: {e}"),
-            FrameError::Timeout => write!(f, "read timeout, incomplete frame"),
             FrameError::CrcMismatch { expected, actual } => {
                 write!(f, "CRC8 mismatch: expected {expected:#04x}, got {actual:#04x}")
             }

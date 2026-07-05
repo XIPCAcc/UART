@@ -26,13 +26,10 @@ impl FrameReader {
         }
     }
 
-    pub fn read_frame(&mut self, fd: RawFd) -> Result<Frame, FrameError> {
-        loop {
-            if let Some(result) = self.try_advance() {
-                return result;
-            }
-            self.fill_from_port(fd)?;
-        }
+    /// 非阻塞读取一帧。有完整帧时返回 `Some(frame)`，数据不足时返回 `None`。
+    pub fn read_frame(&mut self, fd: RawFd) -> Result<Option<Frame>, FrameError> {
+        self.fill_from_port(fd)?;
+        self.try_advance().transpose()
     }
 
     /// Try to advance the state machine using buffered data.
@@ -104,15 +101,12 @@ impl FrameReader {
 
         let mut tmp = [0u8; 512];
         match sys::raw_read(fd, &mut tmp) {
-            Ok(0) => Err(FrameError::Timeout),
+            Ok(0) => Ok(()),
             Ok(n) => {
                 self.buffer.extend(&tmp[..n]);
                 Ok(())
             }
-            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => {
-                // signal interrupted the read, treat as timeout
-                Err(FrameError::Timeout)
-            }
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => Ok(()),
             Err(e) => Err(FrameError::Io(e)),
         }
     }

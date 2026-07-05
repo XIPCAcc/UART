@@ -10,14 +10,14 @@ mod serial_io;
 mod sys;
 
 fn main() -> Result<(), error::AppError> {
-    let (port, baud, timeout) = parse_args();
+    let (port, baud) = parse_args();
 
     let term = Arc::new(AtomicBool::new(false));
     register_signals(&term)?;
 
-    eprintln!("[INFO] Opening {port} @ {baud} baud, timeout {timeout}ms");
+    eprintln!("[INFO] Opening {port} @ {baud} baud");
 
-    let fd = serial_io::open(&port, baud, timeout).map_err(error::AppError::Serial)?;
+    let fd = serial_io::open(&port, baud).map_err(error::AppError::Serial)?;
     let mut reader = frame_reader::FrameReader::new();
 
     eprintln!("[INFO] Ready, entering main loop");
@@ -36,7 +36,7 @@ fn run_main_loop(
 ) -> Result<(), error::AppError> {
     while !term.load(Ordering::Relaxed) {
         match reader.read_frame(fd) {
-            Ok(frame) => {
+            Ok(Some(frame)) => {
                 eprintln!("[INFO] Received frame: {}", frame_summary(&frame));
                 let response = match compute::process_frame(&frame) {
                     Ok(result) => protocol::Frame::Result {
@@ -55,8 +55,8 @@ fn run_main_loop(
                     eprintln!("[ERROR] Write error: {e}");
                 }
             }
-            Err(error::FrameError::Timeout) => {
-                // Normal timeout, continue loop
+            Ok(None) => {
+                std::thread::sleep(std::time::Duration::from_millis(1));
             }
             Err(error::FrameError::CrcMismatch { expected, actual }) => {
                 eprintln!("[WARN] CRC mismatch: expected {expected:#04x}, got {actual:#04x}");
@@ -96,11 +96,10 @@ fn frame_summary(frame: &protocol::Frame) -> String {
 
 // ── CLI parsing ─────────────────────────────────────────────
 
-fn parse_args() -> (String, u32, u64) {
+fn parse_args() -> (String, u32) {
     let args: Vec<String> = std::env::args().collect();
     let mut port = String::from("/dev/ttyS0");
     let mut baud = 115200u32;
-    let mut timeout = 100u64;
 
     let mut i = 1;
     while i < args.len() {
@@ -117,12 +116,6 @@ fn parse_args() -> (String, u32, u64) {
                     baud = args[i].parse().unwrap_or(115200);
                 }
             }
-            "--timeout" | "-t" => {
-                i += 1;
-                if i < args.len() {
-                    timeout = args[i].parse().unwrap_or(100);
-                }
-            }
             "--help" | "-h" => {
                 print_help();
                 std::process::exit(0);
@@ -131,7 +124,7 @@ fn parse_args() -> (String, u32, u64) {
         }
         i += 1;
     }
-    (port, baud, timeout)
+    (port, baud)
 }
 
 fn print_help() {
@@ -143,7 +136,6 @@ fn print_help() {
          OPTIONS:\n    \
          -p, --port <PORT>        Serial port device [default: /dev/ttyS0]\n    \
          -b, --baud <RATE>        Baud rate [default: 115200]\n    \
-         -t, --timeout <MS>       Read timeout in milliseconds [default: 100]\n    \
          -h, --help               Print help"
     );
 }

@@ -143,10 +143,11 @@ pub fn raw_write(fd: c_int, buf: &[u8]) -> io::Result<usize> {
 }
 
 // ── serial port configuration ───────────────────────────────
-// 配置串口为 8N1 原始模式，无流控，带超时读取。
-// 等价于: stty -F /dev/ttyS0 raw 115200 cs8 -cstopb -parenb -echo -echoe -echok -echoctl -echoke -ixon -ixoff clocal cread min 0 time 5
+// 配置串口为 8N1 原始模式，无流控，非阻塞读取。
+// VMIN=0, VTIME=0 的语义：read() 立即返回，有数据就返回数据，没数据返回 0，不等待。
+// 等价于: stty -F /dev/ttyS0 raw 115200 cs8 -cstopb -parenb -echo min 0 time 0
 
-pub fn configure_serial(fd: c_int, baud_rate: u32, timeout_ms: u64) -> io::Result<()> {
+pub fn configure_serial(fd: c_int, baud_rate: u32) -> io::Result<()> {
     // 先读取当前串口配置
     let mut tios: Termios = unsafe { Termios::zeroed() };
     if unsafe { tcgetattr(fd, &mut tios) } != 0 {
@@ -171,14 +172,12 @@ pub fn configure_serial(fd: c_int, baud_rate: u32, timeout_ms: u64) -> io::Resul
     tios.c_ispeed = baud_rate;
     tios.c_ospeed = baud_rate;
 
-    // ── 读取超时 ──
-    // VMIN=0, VTIME=N 的语义：
-    //   - 缓冲区有数据：立即返回，返回实际读取的字节数
-    //   - 缓冲区无数据：等待最多 VTIME×0.1 秒，超时返回 0
-    //   - 这与 serialport crate 的 Timeout 行为一致
-    let vtime = ((timeout_ms + 99) / 100).min(255) as u8;
+    // ── 读取模式（VMIN + VTIME 组合语义）──
+    //   VMIN=0, VTIME=0 → 非阻塞：read() 立即返回，有数据返回数据，无数据返回 0
+    //   VMIN=0, VTIME=N → 带超时：read() 最多阻塞 N×100ms，超时返回 0
+    //   VMIN=1, VTIME=0 → 阻塞等待：read() 永远阻塞，直到收到至少 1 字节
     tios.c_cc[VMIN] = 0;
-    tios.c_cc[VTIME] = vtime;
+    tios.c_cc[VTIME] = 0;
 
     if unsafe { tcsetattr(fd, TCSANOW, &tios) } != 0 {
         return Err(io::Error::last_os_error());
