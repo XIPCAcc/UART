@@ -65,6 +65,25 @@ const VTIME: usize = 5;
 // ── baud rate ───────────────────────────────────────────────
 pub const B115200: u32 = 0x1002;
 
+// ── epoll ────────────────────────────────────────────────────
+// 使用 epoll 阻塞等待串口数据，避免轮询消耗 CPU
+// epoll_create1(0) 创建 epoll 实例，epoll_ctl(ADD) 添加 fd，
+// epoll_wait 阻塞等待直到有数据可读或超时
+pub const EPOLL_CTL_ADD: c_int = 1;
+pub const EPOLLIN: u32 = 0x001;
+
+#[repr(C, packed)]
+pub struct EpollEvent {
+    pub events: u32,
+    pub data: u64,
+}
+
+impl EpollEvent {
+    pub unsafe fn zeroed() -> Self {
+        std::mem::zeroed()
+    }
+}
+
 // ── signals ─────────────────────────────────────────────────
 // SIGINT:  中断信号（Ctrl+C 产生），用于优雅退出
 // SIGTERM: 终止信号（systemctl stop 发送），用于优雅退出
@@ -119,6 +138,13 @@ extern "C" {
     pub fn tcsetattr(fd: c_int, optional_actions: c_int, termios_p: *const Termios) -> c_int;
     // signal: 注册信号处理函数，返回之前的处理函数地址，失败返回 SIG_ERR (usize::MAX)
     pub fn signal(signum: c_int, handler: usize) -> usize;
+    // epoll_create1: 创建 epoll 实例，flags 为 0 或 EPOLL_CLOEXEC，返回 epoll fd
+    pub fn epoll_create1(flags: c_int) -> c_int;
+    // epoll_ctl: 控制 epoll 实例，添加/修改/删除监视的 fd，成功返回 0
+    pub fn epoll_ctl(epfd: c_int, op: c_int, fd: c_int, event: *const EpollEvent) -> c_int;
+    // epoll_wait: 等待 epoll 事件，阻塞直到有事件或超时，返回就绪事件数
+    #[link_name = "epoll_wait"]
+    pub fn libc_epoll_wait(epfd: c_int, events: *mut EpollEvent, maxevents: c_int, timeout: c_int) -> c_int;
 }
 
 // ── safe wrappers ───────────────────────────────────────────
@@ -135,6 +161,39 @@ pub fn raw_read(fd: c_int, buf: &mut [u8]) -> io::Result<usize> {
 
 pub fn raw_write(fd: c_int, buf: &[u8]) -> io::Result<usize> {
     let n = unsafe { write(fd, buf.as_ptr() as *const c_void, buf.len()) };
+    if n < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(n as usize)
+    }
+}
+
+pub fn epoll_create() -> io::Result<c_int> {
+    let fd = unsafe { epoll_create1(0) };
+    if fd < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(fd)
+    }
+}
+
+pub fn epoll_add(epfd: c_int, fd: c_int) -> io::Result<()> {
+    let mut ev = unsafe { EpollEvent::zeroed() };
+    ev.events = EPOLLIN;
+    ev.data = fd as u64;
+    let ret = unsafe { epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev) };
+    if ret < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+/// epoll_wait: 阻塞等待事件，返回就绪事件数（0 表示超时）
+pub fn epoll_wait(epfd: c_int, events: &mut [EpollEvent], timeout_ms: c_int) -> io::Result<usize> {
+    let n = unsafe {
+        libc_epoll_wait(epfd, events.as_mut_ptr(), events.len() as c_int, timeout_ms)
+    };
     if n < 0 {
         Err(io::Error::last_os_error())
     } else {
