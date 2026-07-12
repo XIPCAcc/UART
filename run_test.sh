@@ -54,7 +54,7 @@ echo ""
 echo "[TEST] 启动接收端..."
 "$BINARY" --port "$RECEIVER_PORT" &
 RECEIVER_PID=$!
-sleep 1
+sleep 2
 
 # 启动发送端
 echo "[TEST] 启动发送端..."

@@ -17,9 +17,16 @@ pub const TCSANOW: c_int = 0;
 // CS8:    8 位数据位
 // CREAD:  允许接收
 // CLOCAL: 忽略调制解调器控制线（无载波检测），串口直连必须设置
+// BOTHER: 使用 c_ispeed/c_ospeed 字段指定波特率（而非 CBAUD 位）
+// CSTOPB: 2 位停止位（清除 = 1 位停止位）
+// PARENB: 启用校验位（清除 = 无校验）
 pub const CS8: u32 = 0o60;
 pub const CREAD: u32 = 0o200;
 pub const CLOCAL: u32 = 0o4000;
+pub const BOTHER: u32 = 0o100000;
+pub const CBAUD: u32 = 0o0010017;
+pub const CSTOPB: u32 = 0o100;
+pub const PARENB: u32 = 0o400;
 
 // ── c_iflag bits (for cfmakeraw) ───────────────────────────
 // cfmakeraw 会清除这些标志，使串口工作在原始二进制模式：
@@ -220,14 +227,17 @@ pub fn configure_serial(fd: c_int, baud_rate: u32) -> io::Result<()> {
     tios.c_oflag &= !OPOST;
     // 关闭规范模式、回显、信号识别等
     tios.c_lflag &= !(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-    // 清除 CSIZE（数据位掩码）和 PARENB（校验位），然后设为 8 位数据位
-    tios.c_cflag &= !(CS8 | 0o100); // clear CSIZE and PARENB
+    // 清除 CSIZE（数据位）、CSTOPB（停止位）、PARENB（校验位），然后设为 8N1
+    tios.c_cflag &= !(CS8 | CSTOPB | PARENB);
     tios.c_cflag |= CS8;
 
     // 启用接收器，忽略调制解调器控制线
     tios.c_cflag |= CREAD | CLOCAL;
 
     // ── 波特率 ──
+    // 清除旧的 CBAUD 位，设置 BOTHER 以使用 c_ispeed/c_ospeed 指定任意波特率
+    tios.c_cflag &= !CBAUD;
+    tios.c_cflag |= BOTHER;
     tios.c_ispeed = baud_rate;
     tios.c_ospeed = baud_rate;
 

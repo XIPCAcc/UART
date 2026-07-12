@@ -39,7 +39,7 @@ fn main() -> Result<(), error::AppError> {
         }
         RunMode::Sender { rows_a, cols_a, cols_b, count } => {
             eprintln!("[INFO] Sender mode: A={rows_a}x{cols_a} B={cols_a}x{cols_b} count={count}");
-            run_sender(fd, rows_a, cols_a, cols_b, count)
+            run_sender(fd, rows_a, cols_a, cols_b, count, &term)
         }
     };
 
@@ -119,6 +119,7 @@ fn run_sender(
     cols_a: u8,
     cols_b: u8,
     count: u32,
+    term: &AtomicBool,
 ) -> Result<(), error::AppError> {
     let mut reader = frame_reader::FrameReader::new();
 
@@ -127,6 +128,10 @@ fn run_sender(
     let mut events = [unsafe { sys::EpollEvent::zeroed() }; 1];
 
     for i in 0..count {
+        if term.load(Ordering::Relaxed) {
+            eprintln!("[INFO] Interrupted, stopping sender");
+            break;
+        }
         let frame = build_request(rows_a, cols_a, cols_b, i);
         eprintln!(
             "[INFO] Sending request {}/{}: A={}x{} B={}x{}",
@@ -134,8 +139,7 @@ fn run_sender(
         );
         serial_io::write_frame(fd, &frame).map_err(error::AppError::Serial)?;
 
-        // Wait for response
-        let response = recv_response(fd, &mut reader, epfd, &mut events)?;
+        let response = recv_response(fd, &mut reader, epfd, &mut events, term)?;
         print_response(&response);
     }
 
@@ -148,12 +152,14 @@ fn recv_response(
     reader: &mut frame_reader::FrameReader,
     epfd: RawFd,
     events: &mut [sys::EpollEvent; 1],
+    term: &AtomicBool,
 ) -> Result<protocol::Frame, error::AppError> {
     loop {
-        match sys::epoll_wait(epfd, events, 5000) {
-            Ok(0) => {
-                return Err(error::AppError::Signal("response timeout".into()));
-            }
+        if term.load(Ordering::Relaxed) {
+            return Err(error::AppError::Signal("interrupted".into()));
+        }
+        match sys::epoll_wait(epfd, events, 100) {
+            Ok(0) => continue,
             Ok(_) => {}
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => return Err(error::AppError::Serial(e)),
