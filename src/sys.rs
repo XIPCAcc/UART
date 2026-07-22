@@ -70,14 +70,19 @@ const VMIN: usize = 6;
 const VTIME: usize = 5;
 
 // ── baud rate ───────────────────────────────────────────────
-pub const B115200: u32 = 0x1002;
+
+// ── fcntl ────────────────────────────────────────────────────
+pub const F_GETFL: c_int = 3;
+pub const F_SETFL: c_int = 4;
+pub const O_NONBLOCK: c_int = 0o4000;
 
 // ── epoll ────────────────────────────────────────────────────
-// 使用 epoll 阻塞等待串口数据，避免轮询消耗 CPU
-// epoll_create1(0) 创建 epoll 实例，epoll_ctl(ADD) 添加 fd，
-// epoll_wait 阻塞等待直到有数据可读或超时
 pub const EPOLL_CTL_ADD: c_int = 1;
+pub const EPOLL_CTL_MOD: c_int = 3;
+pub const EPOLL_CTL_DEL: c_int = 2;
 pub const EPOLLIN: u32 = 0x001;
+pub const EPOLLOUT: u32 = 0x004;
+pub const EPOLLET: u32 = 1 << 31; // 边缘触发，避免 CH340 虚假唤醒
 
 #[repr(C, packed)]
 pub struct EpollEvent {
@@ -139,6 +144,8 @@ extern "C" {
     pub fn read(fd: c_int, buf: *mut c_void, count: usize) -> isize;
     // write: 向文件描述符写入数据，返回实际写入字节数，失败返回 -1
     pub fn write(fd: c_int, buf: *const c_void, count: usize) -> isize;
+    // fcntl: 文件描述符控制操作
+    pub fn fcntl(fd: c_int, cmd: c_int, arg: c_int) -> c_int;
     // tcgetattr: 获取终端属性到 termios 结构体，成功返回 0
     pub fn tcgetattr(fd: c_int, termios_p: *mut Termios) -> c_int;
     // tcsetattr: 将 termios 结构体的设置应用到终端，成功返回 0
@@ -186,7 +193,7 @@ pub fn epoll_create() -> io::Result<c_int> {
 
 pub fn epoll_add(epfd: c_int, fd: c_int) -> io::Result<()> {
     let mut ev = unsafe { EpollEvent::zeroed() };
-    ev.events = EPOLLIN;
+    ev.events = EPOLLIN | EPOLLET;
     ev.data = fd as u64;
     let ret = unsafe { epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev) };
     if ret < 0 {
@@ -194,6 +201,39 @@ pub fn epoll_add(epfd: c_int, fd: c_int) -> io::Result<()> {
     } else {
         Ok(())
     }
+}
+
+pub fn epoll_mod(epfd: c_int, fd: c_int, events: u32) -> io::Result<()> {
+    let mut ev = unsafe { EpollEvent::zeroed() };
+    ev.events = events | EPOLLET;
+    ev.data = fd as u64;
+    let ret = unsafe { epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev) };
+    if ret < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+pub fn epoll_del(epfd: c_int, fd: c_int) -> io::Result<()> {
+    let ret = unsafe { epoll_ctl(epfd, EPOLL_CTL_DEL, fd, std::ptr::null()) };
+    if ret < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+pub fn set_nonblocking(fd: c_int) -> io::Result<()> {
+    let flags = unsafe { fcntl(fd, F_GETFL, 0) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let ret = unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) };
+    if ret < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// epoll_wait: 阻塞等待事件，返回就绪事件数（0 表示超时）
@@ -210,8 +250,9 @@ pub fn epoll_wait(epfd: c_int, events: &mut [EpollEvent], timeout_ms: c_int) -> 
 
 // ── serial port configuration ───────────────────────────────
 // 配置串口为 8N1 原始模式，无流控，非阻塞读取。
-// VMIN=0, VTIME=0 的语义：read() 立即返回，有数据就返回数据，没数据返回 0，不等待。
-// 等价于: stty -F /dev/ttyS0 raw 115200 cs8 -cstopb -parenb -echo min 0 time 0
+// VMIN=1, VTIME=0 配合 O_NONBLOCK：无数据时 read() 返回 EAGAIN，
+// epoll 在有数据到达前不会报告 EPOLLIN，保证 epoll_wait 正确阻塞。
+// 等价于: stty -F /dev/ttyS0 raw 115200 cs8 -cstopb -parenb -echo min 1 time 0
 
 pub fn configure_serial(fd: c_int, baud_rate: u32) -> io::Result<()> {
     // 先读取当前串口配置
@@ -245,7 +286,9 @@ pub fn configure_serial(fd: c_int, baud_rate: u32) -> io::Result<()> {
     //   VMIN=0, VTIME=0 → 非阻塞：read() 立即返回，有数据返回数据，无数据返回 0
     //   VMIN=0, VTIME=N → 带超时：read() 最多阻塞 N×100ms，超时返回 0
     //   VMIN=1, VTIME=0 → 阻塞等待：read() 永远阻塞，直到收到至少 1 字节
-    tios.c_cc[VMIN] = 0;
+    // VMIN=1, VTIME=0: read() 阻塞直到至少 1 字节可用
+    // 配合 O_NONBLOCK: 无数据时返回 EAGAIN，epoll 正确报告 EPOLLIN
+    tios.c_cc[VMIN] = 1;
     tios.c_cc[VTIME] = 0;
 
     if unsafe { tcsetattr(fd, TCSANOW, &tios) } != 0 {

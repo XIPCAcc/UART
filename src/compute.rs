@@ -9,7 +9,7 @@ pub struct MatrixResult {
 }
 
 pub fn process_frame(frame: &Frame) -> Result<MatrixResult, ComputeError> {
-    let Frame::Request { dims_a, dims_b, data } = frame else {
+    let Frame::Request { dims_a, dims_b, data, .. } = frame else {
         return Err(ComputeError::InvalidFrame);
     };
 
@@ -60,6 +60,7 @@ mod tests {
     #[test]
     fn test_identity_multiplication() {
         let frame = Frame::Request {
+            seq: 0,
             dims_a: MatrixDims { rows: 2, cols: 2 },
             dims_b: MatrixDims { rows: 2, cols: 2 },
             data: vec![1.0, 0.0, 0.0, 1.0, 5.0, 6.0, 7.0, 8.0],
@@ -76,6 +77,7 @@ mod tests {
     #[test]
     fn test_2x3_times_3x2() {
         let frame = Frame::Request {
+            seq: 0,
             dims_a: MatrixDims { rows: 2, cols: 3 },
             dims_b: MatrixDims { rows: 3, cols: 2 },
             data: vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
@@ -92,6 +94,7 @@ mod tests {
     #[test]
     fn test_dimension_mismatch() {
         let frame = Frame::Request {
+            seq: 0,
             dims_a: MatrixDims { rows: 2, cols: 3 },
             dims_b: MatrixDims { rows: 2, cols: 2 },
             data: vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
@@ -105,6 +108,7 @@ mod tests {
     #[test]
     fn test_1x1_scalar() {
         let frame = Frame::Request {
+            seq: 0,
             dims_a: MatrixDims { rows: 1, cols: 1 },
             dims_b: MatrixDims { rows: 1, cols: 1 },
             data: vec![3.0, 4.0],

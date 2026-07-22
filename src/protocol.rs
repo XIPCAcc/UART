@@ -42,11 +42,13 @@ pub struct MatrixDims {
 #[derive(Debug, Clone)]
 pub enum Frame {
     Request {
+        seq: u8,
         dims_a: MatrixDims,
         dims_b: MatrixDims,
         data: Vec<f32>,
     },
     Result {
+        seq: u8,
         dims: MatrixDims,
         data: Vec<f32>,
     },
@@ -58,8 +60,9 @@ pub enum Frame {
 impl Frame {
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
-            Frame::Request { dims_a, dims_b, data } => {
-                let mut payload = Vec::with_capacity(4 + data.len() * 4);
+            Frame::Request { seq, dims_a, dims_b, data } => {
+                let mut payload = Vec::with_capacity(5 + data.len() * 4);
+                payload.push(*seq);
                 payload.push(dims_a.rows);
                 payload.push(dims_a.cols);
                 payload.push(dims_b.rows);
@@ -69,8 +72,9 @@ impl Frame {
                 }
                 encode_frame(payload)
             }
-            Frame::Result { dims, data } => {
-                let mut payload = Vec::with_capacity(4 + data.len() * 4);
+            Frame::Result { seq, dims, data } => {
+                let mut payload = Vec::with_capacity(5 + data.len() * 4);
+                payload.push(*seq);
                 payload.push(dims.rows);
                 payload.push(dims.cols);
                 payload.push(0x00);
@@ -97,17 +101,18 @@ impl Frame {
             return Ok(Frame::Error { code: payload[0] });
         }
 
-        if payload.len() < 4 {
+        if payload.len() < 5 {
             return Err(FrameError::InvalidFrame);
         }
 
+        let seq = payload[0];
         let dims_a = MatrixDims {
-            rows: payload[0],
-            cols: payload[1],
+            rows: payload[1],
+            cols: payload[2],
         };
         let dims_b = MatrixDims {
-            rows: payload[2],
-            cols: payload[3],
+            rows: payload[3],
+            cols: payload[4],
         };
 
         // Result frame: dims_b is all zeros
@@ -117,24 +122,24 @@ impl Frame {
                 cols: dims_a.cols,
             };
             let expected = dims.rows as usize * dims.cols as usize;
-            let data_bytes = &payload[4..];
+            let data_bytes = &payload[5..];
             if data_bytes.len() != expected * 4 {
                 return Err(FrameError::InvalidFrame);
             }
             let data = parse_f32_slice(data_bytes, expected)?;
-            return Ok(Frame::Result { dims, data });
+            return Ok(Frame::Result { seq, dims, data });
         }
 
         // Request frame
         let a_count = dims_a.rows as usize * dims_a.cols as usize;
         let b_count = dims_b.rows as usize * dims_b.cols as usize;
         let expected_bytes = (a_count + b_count) * 4;
-        let data_bytes = &payload[4..];
+        let data_bytes = &payload[5..];
         if data_bytes.len() != expected_bytes {
             return Err(FrameError::InvalidFrame);
         }
         let data = parse_f32_slice(data_bytes, a_count + b_count)?;
-        Ok(Frame::Request { dims_a, dims_b, data })
+        Ok(Frame::Request { seq, dims_a, dims_b, data })
     }
 }
 
@@ -180,6 +185,7 @@ mod tests {
     #[test]
     fn test_request_frame_roundtrip() {
         let frame = Frame::Request {
+            seq: 3,
             dims_a: MatrixDims { rows: 2, cols: 3 },
             dims_b: MatrixDims { rows: 3, cols: 2 },
             data: vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
@@ -192,7 +198,8 @@ mod tests {
         let payload = &bytes[3..3 + len];
         let parsed = Frame::from_payload(payload).unwrap();
         match parsed {
-            Frame::Request { dims_a, dims_b, data } => {
+            Frame::Request { seq, dims_a, dims_b, data } => {
+                assert_eq!(seq, 3);
                 assert_eq!(dims_a.rows, 2);
                 assert_eq!(dims_a.cols, 3);
                 assert_eq!(dims_b.rows, 3);
@@ -207,6 +214,7 @@ mod tests {
     #[test]
     fn test_result_frame_roundtrip() {
         let frame = Frame::Result {
+            seq: 7,
             dims: MatrixDims { rows: 2, cols: 2 },
             data: vec![58.0, 64.0, 139.0, 154.0],
         };
@@ -215,7 +223,8 @@ mod tests {
         let payload = &bytes[3..3 + len];
         let parsed = Frame::from_payload(payload).unwrap();
         match parsed {
-            Frame::Result { dims, data } => {
+            Frame::Result { seq, dims, data } => {
+                assert_eq!(seq, 7);
                 assert_eq!(dims.rows, 2);
                 assert_eq!(dims.cols, 2);
                 assert_eq!(data.len(), 4);

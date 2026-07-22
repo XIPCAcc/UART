@@ -1,10 +1,7 @@
 use std::collections::VecDeque;
-use std::io;
-use std::os::unix::io::RawFd;
 
 use crate::error::FrameError;
 use crate::protocol::{self, Frame, HEAD_BYTE, MAX_PAYLOAD_LEN};
-use crate::sys;
 
 enum ReadState {
     Syncing,
@@ -26,16 +23,19 @@ impl FrameReader {
         }
     }
 
-    /// 非阻塞读取一帧。有完整帧时返回 `Some(frame)`，数据不足时返回 `None`。
-    pub fn read_frame(&mut self, fd: RawFd) -> Result<Option<Frame>, FrameError> {
-        self.fill_from_port(fd)?;
-        self.try_advance().transpose()
+    /// 向内部缓冲区加入原始字节（由外部异步 I/O 提供）
+    pub fn feed_data(&mut self, data: &[u8]) {
+        if self.buffer.len() > MAX_PAYLOAD_LEN * 2 {
+            self.buffer.clear();
+            self.state = ReadState::Syncing;
+        }
+        self.buffer.extend(data);
     }
 
     /// Try to advance the state machine using buffered data.
     /// Returns Some(result) when a complete frame is parsed or an error occurs,
     /// None when more data is needed.
-    fn try_advance(&mut self) -> Option<Result<Frame, FrameError>> {
+    pub fn try_advance(&mut self) -> Option<Result<Frame, FrameError>> {
         match &mut self.state {
             ReadState::Syncing => {
                 while let Some(&b) = self.buffer.front() {
@@ -92,24 +92,6 @@ impl FrameReader {
             }
         }
     }
-
-    fn fill_from_port(&mut self, fd: RawFd) -> Result<(), FrameError> {
-        if self.buffer.len() > MAX_PAYLOAD_LEN * 2 {
-            self.buffer.clear();
-            self.state = ReadState::Syncing;
-        }
-
-        let mut tmp = [0u8; 512];
-        match sys::raw_read(fd, &mut tmp) {
-            Ok(0) => Ok(()),
-            Ok(n) => {
-                self.buffer.extend(&tmp[..n]);
-                Ok(())
-            }
-            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => Ok(()),
-            Err(e) => Err(FrameError::Io(e)),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -140,6 +122,7 @@ mod tests {
     #[test]
     fn test_request_frame_from_buffer() {
         let frame = Frame::Request {
+            seq: 0,
             dims_a: MatrixDims { rows: 2, cols: 2 },
             dims_b: MatrixDims { rows: 2, cols: 2 },
             data: vec![1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0],
