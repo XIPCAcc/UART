@@ -1,0 +1,2126 @@
+warning: struct `ReadFdFuture` is never constructed
+   --> src/async_serial.rs:156:12
+    |
+156 | pub struct ReadFdFuture<'a> {
+    |            ^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `read_fd` is never used
+   --> src/async_serial.rs:215:8
+    |
+215 | pub fn read_fd<'a>(fd: RawFd, buf: &'a mut [u8]) -> ReadFdFuture<'a> {
+    |        ^^^^^^^
+
+warning: variant `DataOverflow` is never constructed
+  --> src/error.rs:46:5
+   |
+42 | pub enum ComputeError {
+   |          ------------ variant in this enum
+...
+46 |     DataOverflow = 0x04,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `ComputeError` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: function `close` is never used
+   --> src/sys.rs:141:12
+    |
+141 |     pub fn close(fd: c_int) -> c_int;
+    |            ^^^^^
+
+warning: `uart-matmul` (bin "uart-matmul") generated 4 warnings
+    Finished `release` profile [optimized] target(s) in 0.00s
+     Running `target/release/uart-matmul --port /dev/ttyUSB1 --baud 115200 --mode receiver`
+[INFO] Opening /dev/ttyUSB1 @ 115200 baud
+[INFO] Receiver mode, waiting for frames
+[DEBUG] executor: spawned task 0 (pending=1)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B aa
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [aa], buf 0→1B, state=Syncing
+[FRAME] synced: found HEAD_BYTE → ReadingLen
+[FRAME] try_advance → None (need 2B len, have 0)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 35
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [35], buf 0→1B, state=ReadingLen
+[FRAME] try_advance → None (need 2B len, have 1)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 00
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [00], buf 1→2B, state=ReadingLen
+[FRAME] len=53 → ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 0)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 00
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [00], buf 0→1B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 1)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 02
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [02], buf 1→2B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 2)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 03
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [03], buf 2→3B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 3)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 03
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [03], buf 3→4B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 4)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 02
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [02], buf 4→5B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 5)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 08
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [08], buf 5→6B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 6)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 7e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [7e], buf 6→7B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 7)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B af
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [af], buf 7→8B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 8)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 8→9B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 9)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f2
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f2], buf 9→10B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 10)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 31
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [31], buf 10→11B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 11)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 52
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [52], buf 11→12B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 12)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 12→13B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 13)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 40
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [40], buf 13→14B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 14)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B e0
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [e0], buf 14→15B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 15)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 96
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [96], buf 15→16B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 16)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3d
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3d], buf 16→17B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 17)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 4c
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [4c], buf 17→18B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 18)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 86
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [86], buf 18→19B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 19)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 8c
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [8c], buf 19→20B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 20)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 20→21B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 21)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B ac
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [ac], buf 21→22B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 22)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 73
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [73], buf 22→23B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 23)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 66
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [66], buf 23→24B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 24)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 24→25B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 25)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f4
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f4], buf 25→26B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 26)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 9c
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [9c], buf 26→27B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 27)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B e8
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [e8], buf 27→28B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 28)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 28→29B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 29)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f0
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f0], buf 29→30B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 30)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 7e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [7e], buf 30→31B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 31)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 74
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [74], buf 31→32B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 32)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 32→33B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 33)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B dc
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [dc], buf 33→34B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 34)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f1
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f1], buf 34→35B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 35)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 97
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [97], buf 35→36B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 36)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 36→37B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 37)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 50
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [50], buf 37→38B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 38)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 7b
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [7b], buf 38→39B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 39)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 19
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [19], buf 39→40B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 40)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 40→41B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 41)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 04
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [04], buf 41→42B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 42)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 5f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [5f], buf 42→43B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 43)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 9a
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [9a], buf 43→44B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 44)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 44→45B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 45)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B b0
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [b0], buf 45→46B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 46)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 38
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [38], buf 46→47B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 47)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B d2
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [d2], buf 47→48B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 48)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 48→49B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 49)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B b0
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [b0], buf 49→50B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 50)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 39
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [39], buf 50→51B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 51)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B bb
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [bb], buf 51→52B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 52)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3d
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3d], buf 52→53B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 53)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 09
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [09], buf 53→54B, state=ReadingData
+[FRAME] ✓ parsed Request (53B payload)
+[INFO] Received frame: Request seq=0 A=2x3 B=3x2 (12 floats)
+[DEBUG] reader: spawning compute_one_frame task
+[DEBUG] executor: spawned task 1 (pending=2)
+[FRAME] try_advance → None (syncing, no 0xaa)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[IO] WRITE fd=4   25B aa 15 00 00 02 02 00 00 5d 1a f6 3e 5f 47 b6 3e 70 66 15 3f fd ee c9 3e fa
+[DEBUG] executor: task 1 completed (pending=1)
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B aa
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [aa], buf 0→1B, state=Syncing
+[FRAME] synced: found HEAD_BYTE → ReadingLen
+[FRAME] try_advance → None (need 2B len, have 0)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 35
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [35], buf 0→1B, state=ReadingLen
+[FRAME] try_advance → None (need 2B len, have 1)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 00
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [00], buf 1→2B, state=ReadingLen
+[FRAME] len=53 → ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 0)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 01
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [01], buf 0→1B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 1)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 02
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [02], buf 1→2B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 2)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 03
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [03], buf 2→3B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 3)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 03
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [03], buf 3→4B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 4)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 02
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [02], buf 4→5B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 5)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 1e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [1e], buf 5→6B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 6)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 8b
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [8b], buf 6→7B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 7)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 0a
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [0a], buf 7→8B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 8)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 8→9B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 9)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 88
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [88], buf 9→10B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 10)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B d6
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [d6], buf 10→11B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 11)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 85
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [85], buf 11→12B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 12)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 12→13B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 13)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 32
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [32], buf 13→14B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 14)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f1
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f1], buf 14→15B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 15)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 24
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [24], buf 15→16B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 16)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 16→17B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 17)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 20
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [20], buf 17→18B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 18)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 49
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [49], buf 18→19B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 19)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 68
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [68], buf 19→20B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 20)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 20→21B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 21)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 98
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [98], buf 21→22B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 22)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 11
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [11], buf 22→23B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 23)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 06
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [06], buf 23→24B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 24)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 24→25B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 25)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B d8
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [d8], buf 25→26B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 26)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 87
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [87], buf 26→27B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 27)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 90
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [90], buf 27→28B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 28)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 28→29B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 29)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B ba
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [ba], buf 29→30B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 30)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 61
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [61], buf 30→31B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 31)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 25
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [25], buf 31→32B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 32)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 32→33B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 33)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 60
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [60], buf 33→34B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 34)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f2
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f2], buf 34→35B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 35)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B bb
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [bb], buf 35→36B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 36)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 36→37B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 37)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 2e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [2e], buf 37→38B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 38)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B ae
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [ae], buf 38→39B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 39)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 1c
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [1c], buf 39→40B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 40)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 40→41B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 41)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 14
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [14], buf 41→42B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 42)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 13
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [13], buf 42→43B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 43)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 37
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [37], buf 43→44B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 44)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 44→45B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 45)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B c2
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [c2], buf 45→46B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 46)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B d6
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [d6], buf 46→47B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 47)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 37
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [37], buf 47→48B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 48)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 48→49B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 49)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 98
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [98], buf 49→50B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 50)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 1a
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [1a], buf 50→51B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 51)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 37
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [37], buf 51→52B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 52)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 52→53B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 53)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 6a
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [6a], buf 53→54B, state=ReadingData
+[FRAME] ✓ parsed Request (53B payload)
+[INFO] Received frame: Request seq=1 A=2x3 B=3x2 (12 floats)
+[DEBUG] reader: spawning compute_one_frame task
+[DEBUG] executor: spawned task 2 (pending=2)
+[FRAME] try_advance → None (syncing, no 0xaa)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[IO] WRITE fd=4   25B aa 15 00 01 02 02 00 00 3c e8 78 3f 1c b0 58 3f 3a d9 db 3e be f2 c1 3e 41
+[DEBUG] executor: task 2 completed (pending=1)
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B aa
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [aa], buf 0→1B, state=Syncing
+[FRAME] synced: found HEAD_BYTE → ReadingLen
+[FRAME] try_advance → None (need 2B len, have 0)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 35
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [35], buf 0→1B, state=ReadingLen
+[FRAME] try_advance → None (need 2B len, have 1)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 00
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [00], buf 1→2B, state=ReadingLen
+[FRAME] len=53 → ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 0)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 00
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [00], buf 0→1B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 1)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 02
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [02], buf 1→2B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 2)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 03
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [03], buf 2→3B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 3)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 03
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [03], buf 3→4B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 4)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 02
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [02], buf 4→5B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 5)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 08
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [08], buf 5→6B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 6)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 7e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [7e], buf 6→7B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 7)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B af
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [af], buf 7→8B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 8)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 8→9B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 9)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f2
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f2], buf 9→10B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 10)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 31
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [31], buf 10→11B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 11)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 52
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [52], buf 11→12B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 12)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 12→13B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 13)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 40
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [40], buf 13→14B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 14)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B e0
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [e0], buf 14→15B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 15)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 96
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [96], buf 15→16B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 16)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3d
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3d], buf 16→17B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 17)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 4c
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [4c], buf 17→18B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 18)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 86
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [86], buf 18→19B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 19)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 8c
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [8c], buf 19→20B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 20)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 20→21B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 21)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B ac
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [ac], buf 21→22B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 22)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 73
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [73], buf 22→23B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 23)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 66
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [66], buf 23→24B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 24)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 24→25B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 25)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f4
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f4], buf 25→26B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 26)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 9c
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [9c], buf 26→27B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 27)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B e8
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [e8], buf 27→28B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 28)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 28→29B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 29)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f0
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f0], buf 29→30B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 30)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 7e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [7e], buf 30→31B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 31)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 74
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [74], buf 31→32B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 32)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 32→33B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 33)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B dc
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [dc], buf 33→34B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 34)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f1
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f1], buf 34→35B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 35)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 97
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [97], buf 35→36B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 36)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 36→37B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 37)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 50
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [50], buf 37→38B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 38)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 7b
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [7b], buf 38→39B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 39)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 19
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [19], buf 39→40B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 40)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 40→41B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 41)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 04
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [04], buf 41→42B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 42)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 5f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [5f], buf 42→43B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 43)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 9a
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [9a], buf 43→44B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 44)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 44→45B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 45)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B b0
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [b0], buf 45→46B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 46)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 38
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [38], buf 46→47B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 47)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B d2
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [d2], buf 47→48B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 48)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 48→49B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 49)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B b0
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [b0], buf 49→50B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 50)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 39
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [39], buf 50→51B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 51)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B bb
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [bb], buf 51→52B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 52)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3d
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3d], buf 52→53B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 53)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 09
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [09], buf 53→54B, state=ReadingData
+[FRAME] ✓ parsed Request (53B payload)
+[INFO] Received frame: Request seq=0 A=2x3 B=3x2 (12 floats)
+[DEBUG] reader: spawning compute_one_frame task
+[DEBUG] executor: spawned task 3 (pending=2)
+[FRAME] try_advance → None (syncing, no 0xaa)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[IO] WRITE fd=4   25B aa 15 00 00 02 02 00 00 5d 1a f6 3e 5f 47 b6 3e 70 66 15 3f fd ee c9 3e fa
+[DEBUG] executor: task 3 completed (pending=1)
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B aa
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [aa], buf 0→1B, state=Syncing
+[FRAME] synced: found HEAD_BYTE → ReadingLen
+[FRAME] try_advance → None (need 2B len, have 0)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 35
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [35], buf 0→1B, state=ReadingLen
+[FRAME] try_advance → None (need 2B len, have 1)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 00
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [00], buf 1→2B, state=ReadingLen
+[FRAME] len=53 → ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 0)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 01
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [01], buf 0→1B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 1)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 02
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [02], buf 1→2B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 2)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 03
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [03], buf 2→3B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 3)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 03
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [03], buf 3→4B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 4)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 02
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [02], buf 4→5B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 5)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 1e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [1e], buf 5→6B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 6)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 8b
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [8b], buf 6→7B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 7)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 0a
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [0a], buf 7→8B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 8)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 8→9B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 9)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 88
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [88], buf 9→10B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 10)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B d6
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [d6], buf 10→11B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 11)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 85
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [85], buf 11→12B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 12)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 12→13B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 13)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 32
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [32], buf 13→14B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 14)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f1
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f1], buf 14→15B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 15)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 24
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [24], buf 15→16B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 16)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 16→17B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 17)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 20
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [20], buf 17→18B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 18)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 49
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [49], buf 18→19B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 19)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 68
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [68], buf 19→20B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 20)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 20→21B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 21)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 98
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [98], buf 21→22B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 22)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 11
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [11], buf 22→23B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 23)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 06
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [06], buf 23→24B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 24)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 24→25B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 25)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B d8
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [d8], buf 25→26B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 26)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 87
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [87], buf 26→27B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 27)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 90
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [90], buf 27→28B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 28)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 28→29B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 29)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B ba
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [ba], buf 29→30B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 30)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 61
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [61], buf 30→31B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 31)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 25
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [25], buf 31→32B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 32)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 32→33B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 33)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 60
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [60], buf 33→34B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 34)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B f2
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [f2], buf 34→35B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 35)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B bb
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [bb], buf 35→36B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 36)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3e], buf 36→37B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 37)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 2e
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [2e], buf 37→38B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 38)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B ae
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [ae], buf 38→39B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 39)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 1c
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [1c], buf 39→40B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 40)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 40→41B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 41)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 14
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [14], buf 41→42B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 42)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 13
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [13], buf 42→43B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 43)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 37
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [37], buf 43→44B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 44)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 44→45B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 45)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B c2
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [c2], buf 45→46B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 46)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B d6
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [d6], buf 46→47B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 47)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 37
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [37], buf 47→48B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 48)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 48→49B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 49)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 98
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [98], buf 49→50B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 50)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 1a
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [1a], buf 50→51B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 51)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 37
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [37], buf 51→52B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 52)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 3f
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [3f], buf 52→53B, state=ReadingData
+[FRAME] try_advance → None (need 54B data+crc, have 53)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait returned 1 events
+[DEBUG] executor: task 0 woken
+[IO] READ  fd=4    1B 6a
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[FRAME] feed 1B [6a], buf 53→54B, state=ReadingData
+[FRAME] ✓ parsed Request (53B payload)
+[INFO] Received frame: Request seq=1 A=2x3 B=3x2 (12 floats)
+[DEBUG] reader: spawning compute_one_frame task
+[DEBUG] executor: spawned task 4 (pending=2)
+[FRAME] try_advance → None (syncing, no 0xaa)
+[IO] READ  fd=4 ERR  Resource temporarily unavailable (os error 11)
+[DEBUG] executor: task 0 Pending
+[IO] WRITE fd=4   25B aa 15 00 01 02 02 00 00 3c e8 78 3f 1c b0 58 3f 3a d9 db 3e be f2 c1 3e 41
+[DEBUG] executor: task 4 completed (pending=1)
+[DEBUG] reactor: calling epoll_wait (timeout=-1), watching 1 wakers
+[DEBUG] reactor: epoll_wait interrupted
+[INFO] Shutting down

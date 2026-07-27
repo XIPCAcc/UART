@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-PORT="${1:-/dev/ttyS0}"
+PORT="${1:-/dev/ttyUSB1}"
 BAUD="${2:-115200}"
 
 echo "============================================"

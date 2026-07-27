@@ -177,25 +177,33 @@ impl Executor {
         }
     }
 
-    /// 从 TransferStack 批量取出全部就绪任务并依次 poll
+    /// 从 TransferStack 循环取出全部就绪任务并依次 poll
+    ///
+    /// 使用双层循环：外层 take_all 直到栈空，确保 poll 期间新 spawn 的任务
+    /// 也能被及时处理，避免"等待 I/O 的任务"和"刚 spawn 的计算任务"互锁。
     fn drain_queue(&self) {
-        let mut node = self.queue.take_all();
-        while !node.is_null() {
-            let next = unsafe { (*node).run_queue_item.next.load(Ordering::Relaxed) };
-            // 出队：清除 RUN_QUEUED，恢复可被重新唤醒
-            unsafe { (*node).state.fetch_and(!STATE_RUN_QUEUED, Ordering::Release); }
-
-            let task = unsafe { &*(node as *const Task) };
-            let w = task_waker(unsafe { Rc::from_raw(node as *const Task) });
-            let mut task_cx = Context::from_waker(&w);
-            if task.future.borrow_mut().as_mut().poll(&mut task_cx).is_ready() {
-                self.pending.set(self.pending.get() - 1);
-                eprintln!("[DEBUG] executor: task {} completed (pending={})", task.id, self.pending.get());
-            } else {
-                eprintln!("[DEBUG] executor: task {} Pending", task.id);
+        loop {
+            let mut node = self.queue.take_all();
+            if node.is_null() {
+                break;
             }
+            while !node.is_null() {
+                let next = unsafe { (*node).run_queue_item.next.load(Ordering::Relaxed) };
+                // 出队：清除 RUN_QUEUED，恢复可被重新唤醒
+                unsafe { (*node).state.fetch_and(!STATE_RUN_QUEUED, Ordering::Release); }
 
-            node = next;
+                let task = unsafe { &*(node as *const Task) };
+                let w = task_waker(unsafe { Rc::from_raw(node as *const Task) });
+                let mut task_cx = Context::from_waker(&w);
+                if task.future.borrow_mut().as_mut().poll(&mut task_cx).is_ready() {
+                    self.pending.set(self.pending.get() - 1);
+                    eprintln!("[DEBUG] executor: task {} completed (pending={})", task.id, self.pending.get());
+                } else {
+                    eprintln!("[DEBUG] executor: task {} Pending", task.id);
+                }
+
+                node = next;
+            }
         }
     }
 }
