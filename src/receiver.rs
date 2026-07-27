@@ -10,7 +10,7 @@ use crate::frame_reader;
 use crate::protocol;
 use crate::signal;
 
-pub async fn run(config: &Config) {
+pub async fn run(config: Config) {
     let mut serial = match AsyncSerial::open(&config.port, config.baud) {
         Ok(s) => s,
         Err(e) => {

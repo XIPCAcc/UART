@@ -141,6 +141,14 @@ impl Frame {
         let data = parse_f32_slice(data_bytes, a_count + b_count)?;
         Ok(Frame::Request { seq, dims_a, dims_b, data })
     }
+
+    pub fn kind_name(&self) -> &'static str {
+        match self {
+            Frame::Request { .. } => "Request",
+            Frame::Result { .. } => "Result",
+            Frame::Error { .. } => "Error",
+        }
+    }
 }
 
 fn encode_frame(payload: Vec<u8>) -> Vec<u8> {

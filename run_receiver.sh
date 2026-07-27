@@ -16,4 +16,4 @@ echo " 波特率: $BAUD"
 echo " 按 Ctrl+C 停止"
 echo "============================================"
 
-cargo run --release -- --port "$PORT" --baud "$BAUD"
+cargo run --release -- --port "$PORT" --baud "$BAUD" --mode receiver

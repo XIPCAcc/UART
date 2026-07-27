@@ -23,14 +23,17 @@ fn main() -> Result<(), AppError> {
 
     let ex = executor::Executor::new().map_err(|e| AppError::Serial(e))?;
 
-    match config.mode {
+    match &config.mode {
         cli::RunMode::Receiver => {
             eprintln!("[INFO] Receiver mode, waiting for frames");
-            ex.block_on(receiver::run(&config));
+            ex.spawn(receiver::run(config));
+            ex.block_on();
         }
         cli::RunMode::Sender { rows_a, cols_a, cols_b, count } => {
-            eprintln!("[INFO] Sender mode: A={rows_a}x{cols_a} B={cols_a}x{cols_b} count={count}");
-            ex.block_on(sender::run(&config, rows_a, cols_a, cols_b, count));
+            let (ra, ca, cb, cnt) = (*rows_a, *cols_a, *cols_b, *count);
+            eprintln!("[INFO] Sender mode: A={ra}x{ca} B={ca}x{cb} count={cnt}");
+            ex.spawn(sender::run(config, ra, ca, cb, cnt));
+            ex.block_on();
         }
     }
 

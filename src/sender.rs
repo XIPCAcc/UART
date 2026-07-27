@@ -7,7 +7,7 @@ use crate::protocol;
 use crate::rng::Lcg;
 use crate::signal;
 
-pub async fn run(config: &Config, rows_a: u8, cols_a: u8, cols_b: u8, count: u32) {
+pub async fn run(config: Config, rows_a: u8, cols_a: u8, cols_b: u8, count: u32) {
     let mut serial = match AsyncSerial::open(&config.port, config.baud) {
         Ok(s) => s,
         Err(e) => {

@@ -29,14 +29,27 @@ impl FrameReader {
             self.buffer.clear();
             self.state = ReadState::Syncing;
         }
+        let prev = self.buffer.len();
         self.buffer.extend(data);
+        let state = self.state_name();
+        let mut hex = String::with_capacity(data.len() * 3);
+        for &b in data {
+            hex.push_str(&format!("{b:02x} "));
+        }
+        hex.pop();
+        eprintln!(
+            "[FRAME] feed {}B [{hex}], buf {}→{}B, state={state}",
+            data.len(),
+            prev,
+            self.buffer.len(),
+        );
     }
 
     /// Try to advance the state machine using buffered data.
     /// Returns Some(result) when a complete frame is parsed or an error occurs,
     /// None when more data is needed.
     pub fn try_advance(&mut self) -> Option<Result<Frame, FrameError>> {
-        match &mut self.state {
+        let result = match &mut self.state {
             ReadState::Syncing => {
                 while let Some(&b) = self.buffer.front() {
                     if b == HEAD_BYTE {
@@ -45,14 +58,18 @@ impl FrameReader {
                     self.buffer.pop_front();
                 }
                 if self.buffer.is_empty() {
+                    eprintln!("[FRAME] try_advance → None (syncing, no {:#04x})", HEAD_BYTE);
                     return None;
                 }
                 self.buffer.pop_front();
                 self.state = ReadState::ReadingLen;
+                eprintln!("[FRAME] synced: found HEAD_BYTE → ReadingLen");
                 self.try_advance()
             }
             ReadState::ReadingLen => {
-                if self.buffer.len() < 2 {
+                let buf_len = self.buffer.len();
+                if buf_len < 2 {
+                    eprintln!("[FRAME] try_advance → None (need 2B len, have {buf_len})");
                     return None;
                 }
                 let lo = self.buffer.pop_front().unwrap();
@@ -60,15 +77,22 @@ impl FrameReader {
                 let len = u16::from_le_bytes([lo, hi]);
 
                 if len == 0 || len as usize > MAX_PAYLOAD_LEN {
+                    eprintln!("[FRAME] bad len={len} → back to Syncing");
                     self.state = ReadState::Syncing;
                     return Some(Err(FrameError::Oversize(len as usize)));
                 }
+                eprintln!("[FRAME] len={len} → ReadingData");
                 self.state = ReadState::ReadingData { len };
                 self.try_advance()
             }
             ReadState::ReadingData { len } => {
                 let total_needed = *len as usize + 1;
                 if self.buffer.len() < total_needed {
+                    eprintln!(
+                        "[FRAME] try_advance → None (need {}B data+crc, have {})",
+                        total_needed,
+                        self.buffer.len(),
+                    );
                     return None;
                 }
 
@@ -82,14 +106,35 @@ impl FrameReader {
                 self.state = ReadState::Syncing;
 
                 if expected_crc != crc_byte {
+                    eprintln!(
+                        "[FRAME] CRC mismatch: expected=0x{expected_crc:02x} actual=0x{crc_byte:02x}"
+                    );
                     return Some(Err(FrameError::CrcMismatch {
                         expected: expected_crc,
                         actual: crc_byte,
                     }));
                 }
 
-                Some(Frame::from_payload(&payload))
+                match Frame::from_payload(&payload) {
+                    Ok(frame) => {
+                        eprintln!("[FRAME] ✓ parsed {} ({}B payload)", frame.kind_name(), payload.len());
+                        Some(Ok(frame))
+                    }
+                    Err(e) => {
+                        eprintln!("[FRAME] parse error: {e}");
+                        Some(Err(e))
+                    }
+                }
             }
+        };
+        result
+    }
+
+    fn state_name(&self) -> &'static str {
+        match self.state {
+            ReadState::Syncing => "Syncing",
+            ReadState::ReadingLen => "ReadingLen",
+            ReadState::ReadingData { .. } => "ReadingData",
         }
     }
 }

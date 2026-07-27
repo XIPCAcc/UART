@@ -82,7 +82,6 @@ pub const EPOLL_CTL_MOD: c_int = 3;
 pub const EPOLL_CTL_DEL: c_int = 2;
 pub const EPOLLIN: u32 = 0x001;
 pub const EPOLLOUT: u32 = 0x004;
-pub const EPOLLET: u32 = 1 << 31; // 边缘触发，避免 CH340 虚假唤醒
 
 #[repr(C, packed)]
 pub struct EpollEvent {
@@ -167,19 +166,38 @@ extern "C" {
 pub fn raw_read(fd: c_int, buf: &mut [u8]) -> io::Result<usize> {
     let n = unsafe { read(fd, buf.as_mut_ptr() as *mut c_void, buf.len()) };
     if n < 0 {
-        Err(io::Error::last_os_error())
+        let err = io::Error::last_os_error();
+        eprintln!("[IO] READ  fd={fd} ERR  {}", err);
+        Err(err)
     } else {
-        Ok(n as usize)
+        let n = n as usize;
+        if n > 0 {
+            eprintln!("[IO] READ  fd={fd} {n:>4}B {}", hex_dump(&buf[..n]));
+        }
+        Ok(n)
     }
 }
 
 pub fn raw_write(fd: c_int, buf: &[u8]) -> io::Result<usize> {
     let n = unsafe { write(fd, buf.as_ptr() as *const c_void, buf.len()) };
     if n < 0 {
-        Err(io::Error::last_os_error())
+        let err = io::Error::last_os_error();
+        eprintln!("[IO] WRITE fd={fd} ERR  {}", err);
+        Err(err)
     } else {
-        Ok(n as usize)
+        let n = n as usize;
+        eprintln!("[IO] WRITE fd={fd} {n:>4}B {}", hex_dump(&buf[..n]));
+        Ok(n)
     }
+}
+
+fn hex_dump(data: &[u8]) -> String {
+    let mut s = String::with_capacity(data.len() * 3);
+    for &b in data {
+        s.push_str(&format!("{b:02x} "));
+    }
+    s.pop(); // 去掉尾部空格
+    s
 }
 
 pub fn epoll_create() -> io::Result<c_int> {
@@ -193,7 +211,7 @@ pub fn epoll_create() -> io::Result<c_int> {
 
 pub fn epoll_add(epfd: c_int, fd: c_int) -> io::Result<()> {
     let mut ev = unsafe { EpollEvent::zeroed() };
-    ev.events = EPOLLIN | EPOLLET;
+    ev.events = EPOLLIN;
     ev.data = fd as u64;
     let ret = unsafe { epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev) };
     if ret < 0 {
@@ -205,7 +223,7 @@ pub fn epoll_add(epfd: c_int, fd: c_int) -> io::Result<()> {
 
 pub fn epoll_mod(epfd: c_int, fd: c_int, events: u32) -> io::Result<()> {
     let mut ev = unsafe { EpollEvent::zeroed() };
-    ev.events = events | EPOLLET;
+    ev.events = events;
     ev.data = fd as u64;
     let ret = unsafe { epoll_ctl(epfd, EPOLL_CTL_MOD, fd, &ev) };
     if ret < 0 {

@@ -37,7 +37,7 @@ impl Reactor {
     pub fn add(&mut self, fd: RawFd) -> io::Result<()> {
         sys::set_nonblocking(fd)?;
         sys::epoll_add(self.epfd, fd)?;
-        self.fd_events.insert(fd, sys::EPOLLIN | sys::EPOLLET);
+        self.fd_events.insert(fd, sys::EPOLLIN);
         Ok(())
     }
 
