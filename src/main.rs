@@ -12,6 +12,10 @@ mod sender;
 mod serial_io;
 mod signal;
 mod sys;
+mod uintr;
+mod uintr_core;
+mod uintr_receiver;
+mod uintr_sender;
 
 use crate::error::AppError;
 
@@ -33,6 +37,17 @@ fn main() -> Result<(), AppError> {
             let (ra, ca, cb, cnt) = (*rows_a, *cols_a, *cols_b, *count);
             eprintln!("[INFO] Sender mode: A={ra}x{ca} B={ca}x{cb} count={cnt}");
             ex.spawn(sender::run(config, ra, ca, cb, cnt));
+            ex.block_on();
+        }
+        cli::RunMode::UintrReceiver => {
+            eprintln!("[INFO] UINTR Receiver mode, waiting for user interrupts");
+            ex.spawn(uintr_receiver::run());
+            ex.block_on();
+        }
+        cli::RunMode::UintrSender { count, interval_ms } => {
+            let (cnt, interval) = (*count, *interval_ms);
+            eprintln!("[INFO] UINTR Sender mode: count={cnt} interval_ms={interval}");
+            ex.spawn(uintr_sender::run(cnt, interval));
             ex.block_on();
         }
     }

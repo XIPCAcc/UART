@@ -7,6 +7,8 @@ pub struct Config {
 pub enum RunMode {
     Receiver,
     Sender { rows_a: u8, cols_a: u8, cols_b: u8, count: u32 },
+    UintrReceiver,
+    UintrSender { count: u32, interval_ms: u64 },
 }
 
 pub fn parse_args() -> Config {
@@ -18,6 +20,7 @@ pub fn parse_args() -> Config {
     let mut cols_a = 3u8;
     let mut cols_b = 2u8;
     let mut count = 1u32;
+    let mut interval_ms = 0u64;
 
     let mut i = 1;
     while i < args.len() {
@@ -64,6 +67,12 @@ pub fn parse_args() -> Config {
                     count = args[i].parse().unwrap_or(1);
                 }
             }
+            "--interval-ms" => {
+                i += 1;
+                if i < args.len() {
+                    interval_ms = args[i].parse().unwrap_or(0);
+                }
+            }
             "--help" | "-h" => {
                 print_help();
                 std::process::exit(0);
@@ -75,6 +84,8 @@ pub fn parse_args() -> Config {
 
     let run_mode = match mode.as_str() {
         "sender" => RunMode::Sender { rows_a, cols_a, cols_b, count },
+        "uintr-receiver" => RunMode::UintrReceiver,
+        "uintr-sender" => RunMode::UintrSender { count, interval_ms },
         _ => RunMode::Receiver,
     };
 
@@ -90,13 +101,14 @@ fn print_help() {
          OPTIONS:\n    \
          -p, --port <PORT>        Serial port device [default: /dev/ttyS0]\n    \
          -b, --baud <RATE>        Baud rate [default: 115200]\n    \
-         -m, --mode <MODE>        Mode: receiver (default) or sender\n\
+         -m, --mode <MODE>        Mode: receiver (default), sender, uintr-receiver, uintr-sender\n\
          \n\
          SENDER OPTIONS:\n    \
          --rows-a <N>             Rows of matrix A [default: 2]\n    \
          --cols-a <N>             Columns of A / rows of B [default: 3]\n    \
          --cols-b <N>             Columns of matrix B [default: 2]\n    \
-         -c, --count <N>          Number of requests to send [default: 1]\n    \
+         -c, --count <N>          Number of requests/interrupts to send [default: 1]\n    \
+         --interval-ms <MS>       Interval between interrupts (uintr-sender) [default: 0]\n    \
          -h, --help               Print help\n\
          \n\
          EXAMPLES:\n    \
@@ -104,6 +116,12 @@ fn print_help() {
          uart-matmul -p /dev/ttyS0\n\
          \n    \
          # Sender on ttyUSB0, 2x3 * 3x2, 5 requests\n    \
-         uart-matmul -p /dev/ttyUSB0 --mode sender --rows-a 2 --cols-a 3 --cols-b 2 -c 5"
+         uart-matmul -p /dev/ttyUSB0 --mode sender --rows-a 2 --cols-a 3 --cols-b 2 -c 5\n\
+         \n    \
+         # UINTR receiver (wait for interrupts)\n    \
+         uart-matmul --mode uintr-receiver\n\
+         \n    \
+         # UINTR sender (send 100 interrupts)\n    \
+         uart-matmul --mode uintr-sender -c 100 --interval-ms 100"
     );
 }
