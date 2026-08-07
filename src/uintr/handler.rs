@@ -1,18 +1,15 @@
-use libc::c_char;
-use crate::uintr_core::UintrToken;
+use crate::uintr_core::{UintrToken, WAKE_FLAG};
+use std::sync::atomic::Ordering;
 
 #[no_mangle]
-pub extern "C" fn rust_interrupt_callback(_handler_name: *const c_char, _vector: u64) {
-    eprintln!("[TRACE] handler: UINTR interrupt received!");
+pub extern "C" fn rust_interrupt_callback(_handler_name: *const libc::c_char, _vector: u64) {
     unsafe {
         if let Some(ref token) = TOKEN {
             token.set_pending();
-            let seq = token.inner.seq.load(std::sync::atomic::Ordering::Acquire);
-            eprintln!("[TRACE] handler: token.set_pending() done, seq={}", seq);
-        } else {
-            eprintln!("[WARN] handler: TOKEN is None, interrupt ignored");
         }
     }
+    // 写入唤醒标志，解除 UMONITOR/UMWAIT 休眠
+    WAKE_FLAG.store(1, Ordering::Release);
 }
 
 static mut TOKEN: Option<UintrToken> = None;

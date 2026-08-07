@@ -124,3 +124,26 @@ pub unsafe fn uiret() {
         core::arch::asm!("uiret", options(noreturn));
     }
 }
+
+/// UMONITOR — arm address monitoring hardware
+/// Intel WAITPKG extension (CPUID.07h.ECX[bit 5])
+pub unsafe fn umonitor(addr: *const u8) {
+    core::arch::asm!(
+        "umonitor {}",
+        in(reg) addr,
+        options(nostack),
+    );
+}
+
+/// UMWAIT — user-mode wait in optimized C-state
+/// state: 0 = C0.2 (deep), 1 = C0.1 (shallow)
+/// deadline: absolute TSC deadline, u64::MAX for infinite
+pub unsafe fn umwait(state: u32, deadline: u64) {
+    core::arch::asm!(
+        "umwait {0:e}",
+        in(reg) state,
+        in("edx") ((deadline >> 32) as u32),
+        in("eax") (deadline as u32),
+        options(nostack),  // nomem 移除：防止编译器将 TERM.load() 提到 UMWAIT 前
+    );
+}

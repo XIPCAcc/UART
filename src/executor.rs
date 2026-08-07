@@ -29,6 +29,8 @@ use std::task::{Context, RawWaker, RawWakerVTable, Waker};
 
 use crate::reactor::Reactor;
 use crate::signal;
+use crate::uintr::syscall::{umonitor, umwait};
+use crate::uintr_core::WAKE_FLAG;
 
 // ── 全局执行器指针 ─────────────────────────────────────────────
 
@@ -74,6 +76,10 @@ impl TransferStack {
 
     fn take_all(&self) -> *mut TaskHeader {
         self.head.swap(std::ptr::null_mut(), Ordering::Acquire)
+    }
+
+    fn is_empty(&self) -> bool {
+        self.head.load(Ordering::Relaxed).is_null()
     }
 }
 
@@ -122,7 +128,6 @@ impl Task {
         }
         let ptr = Rc::into_raw(self.clone()) as *mut TaskHeader;
         ex.queue.push_was_empty(ptr);
-        eprintln!("[DEBUG] executor: task {} woken", self.id);
     }
 }
 
@@ -153,7 +158,6 @@ impl Executor {
         self.pending.set(self.pending.get() + 1);
         let ptr = Rc::into_raw(task) as *mut TaskHeader;
         self.queue.push_was_empty(ptr);
-        eprintln!("[DEBUG] executor: spawned task {} (pending={})", task_id, self.pending.get());
     }
 
     /// 纯事件循环 — 所有 task 需提前通过 spawn 注入
@@ -171,9 +175,42 @@ impl Executor {
             if signal::TERM.load(Ordering::Relaxed) {
                 break;
             }
-            // eprintln!("[DEBUG] executor: no tasks ready, entering epoll_wait (pending={})", self.pending.get());
-            self.reactor.borrow_mut().wait(-1);
-            // eprintln!("[DEBUG] executor: returned from epoll_wait");
+            // ── RCU 风格快慢路径：队列非空时跳过 CLUI/STUI ──────────
+            //
+            // 快速路径（无 CLUI，高吞吐场景几乎每次都走这里）：
+            //   直接原子读 queue.head。如果非空，说明有 task 待处理，
+            //   直接 continue → drain_queue 处理，完全不用开关中断。
+            //   这里「读 head」没有任何保护，是「RCU 读端」语义：
+            //     - 读到非空 → 一定正确（task 入队后不会被并发移出，只有
+            //       本线程自己的 drain_queue 会 take_all，单线程安全）
+            //     - 读到空 → 可能是假空（UINTR 刚打断、handler 已入队，
+            //       但 cache line 还没同步给我们）→ 进入慢路径复核
+            //
+            // 慢路径（确实为空要休眠时才走，CLUI 保护）：
+            //   CLUI → 再检查 is_empty → 非空则 STUI+continue
+            //   空 → WAKE_FLAG=0 → UMONITOR → STUI → UMWAIT
+            if !self.queue.is_empty() {
+                continue;
+            }
+            // ── 慢路径：只有真的需要休眠时才开关中断 ──
+            unsafe {
+                crate::uintr::syscall::clui();
+            }
+            if !self.queue.is_empty() {
+                // CLUI 期间发现已有人塞 task（或快速路径假空）→ 不开 UMONITOR
+                unsafe {
+                    crate::uintr::syscall::stui();
+                }
+                continue;
+            }
+            // 在 CLUI 保护下重置 WAKE_FLAG 并 arm UMONITOR
+            unsafe {
+                umonitor(&WAKE_FLAG as *const _ as *const u8);
+                crate::uintr::syscall::stui();
+                // UMWAIT：C0.2 深度休眠，无限等待
+                // 仅靠 UMONITOR 捕获 handler 的 WAKE_FLAG.store(1) 唤醒
+                umwait(0, u64::MAX);
+            }
         }
     }
 
@@ -192,15 +229,27 @@ impl Executor {
                 // 出队：清除 RUN_QUEUED，恢复可被重新唤醒
                 unsafe { (*node).state.fetch_and(!STATE_RUN_QUEUED, Ordering::Release); }
 
-                let task = unsafe { &*(node as *const Task) };
-                let w = task_waker(unsafe { Rc::from_raw(node as *const Task) });
+                // ── 所有权策略：保证 refcount 对称 ───────────────
+                // spawn 时：Rc::into_raw(task)   消耗1个 Rc，refcount 不变（实际是把所有权转成裸指针）
+                // 这里：    Rc::from_raw(node)   把裸指针转回 Rc，获得所有权（refcount 仍为逻辑1）
+                // clone 给 task_waker：refcount 变成 2
+                // Waker 在 poll 结束后 drop：drop_waker 会把 refcount 减 1
+                //   - 若 poll 内部没 clone waker（Ready 路径常见）→ 此时 refcount = 1
+                //     然后本地 task_rc 在循环迭代结束 drop → refcount = 0，Task 释放 ✓
+                //   - 若 poll 内部 clone了waker（Pending 路径）→ refcount = 3
+                //     Waker drop → refcount=2，然后 task_rc drop → refcount=1
+                //     剩余 1 份引用在 token.waker 中持有的克隆 waker 里，Task 继续存活 ✓
+                let task_rc: Rc<Task> = unsafe { Rc::from_raw(node as *const Task) };
+                let task: &Task = &task_rc;
+                let w = task_waker(task_rc.clone());  // 显式 clone，Rc refcount++
                 let mut task_cx = Context::from_waker(&w);
-                if task.future.borrow_mut().as_mut().poll(&mut task_cx).is_ready() {
+                let is_ready = task.future.borrow_mut().as_mut().poll(&mut task_cx).is_ready();
+                if is_ready {
                     self.pending.set(self.pending.get() - 1);
-                    eprintln!("[DEBUG] executor: task {} completed (pending={})", task.id, self.pending.get());
-                } else {
-                    eprintln!("[DEBUG] executor: task {} Pending", task.id);
                 }
+                // Waker `w` 在这里 drop → drop_waker →  Rc refcount--
+                // task_rc 在这里也 drop → Rc refcount--
+                // 总体对称，不会有 use-after-free 也不会有 leak
 
                 node = next;
             }

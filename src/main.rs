@@ -12,6 +12,7 @@ mod sender;
 mod serial_io;
 mod signal;
 mod sys;
+mod trace;
 mod uintr;
 mod uintr_core;
 mod uintr_receiver;

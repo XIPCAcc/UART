@@ -1,4 +1,5 @@
 use std::time::{Duration, Instant};
+use crate::trace;
 
 #[derive(Clone)]
 pub struct Benchmarks {
@@ -130,18 +131,46 @@ impl Benchmarks {
     }
 
     pub fn print_results(&self, result: &BenchmarkResult) {
-        println!("\n============ RESULTS ================");
-        println!("Message count:      {}", result.message_count);
-        println!("Total duration:     {:.6} ms", result.total_duration_ms);
-        println!("Average duration:   {:.6} us", result.average_duration_us);
-        println!("Minimum duration:   {:.6} us", result.minimum_duration_us);
-        println!("Maximum duration:   {:.6} us", result.maximum_duration_us);
-        println!("Standard deviation: {:.6} us", result.standard_deviation_us);
-        println!("Latency P50:        {:.6} us", result.p50_us);
-        println!("Latency P90:        {:.6} us", result.p90_us);
-        println!("Latency P99:        {:.6} us", result.p99_us);
-        println!("Message rate:       {:.0} msg/s", result.message_rate);
-        println!("CPU usage:          {:.2}%", result.cpu_usage);
-        println!("=====================================");
+        // 直接走 syscall write(STDOUT)，避免 std println! 的 Stdout Mutex
+        let mut buf = [0u8; 8192];
+        let mut off = 0;
+        let push = |buf: &mut [u8], off: &mut usize, s: &[u8]| {
+            let n = s.len().min(buf.len() - *off);
+            buf[*off..*off + n].copy_from_slice(&s[..n]);
+            *off += n;
+        };
+        let push_u = |buf: &mut [u8], off: &mut usize, label: &[u8], v: usize| {
+            push(buf, off, label);
+            let mut tmp = [0u8; 32];
+            let n = trace::fmt_usize(v, &mut tmp);
+            let take = n.min(buf.len() - *off);
+            buf[*off..*off + take].copy_from_slice(&tmp[..take]);
+            *off += take;
+            push(buf, off, b"\n");
+        };
+        let push_f = |buf: &mut [u8], off: &mut usize, label: &[u8], v: f64, suffix: &[u8]| {
+            push(buf, off, label);
+            let mut tmp = [0u8; 64];
+            let n = trace::fmt_f64(v, &mut tmp);
+            let take = n.min(buf.len() - *off);
+            buf[*off..*off + take].copy_from_slice(&tmp[..take]);
+            *off += take;
+            push(buf, off, suffix);
+            push(buf, off, b"\n");
+        };
+        push(&mut buf, &mut off, b"\n============ RESULTS ================\n");
+        push_u(&mut buf, &mut off, b"Message count:      ", result.message_count);
+        push_f(&mut buf, &mut off, b"Total duration:     ", result.total_duration_ms, b" ms");
+        push_f(&mut buf, &mut off, b"Average duration:   ", result.average_duration_us, b" us");
+        push_f(&mut buf, &mut off, b"Minimum duration:   ", result.minimum_duration_us, b" us");
+        push_f(&mut buf, &mut off, b"Maximum duration:   ", result.maximum_duration_us, b" us");
+        push_f(&mut buf, &mut off, b"Standard deviation: ", result.standard_deviation_us, b" us");
+        push_f(&mut buf, &mut off, b"Latency P50:        ", result.p50_us, b" us");
+        push_f(&mut buf, &mut off, b"Latency P90:        ", result.p90_us, b" us");
+        push_f(&mut buf, &mut off, b"Latency P99:        ", result.p99_us, b" us");
+        push_f(&mut buf, &mut off, b"Message rate:       ", result.message_rate.round(), b" msg/s");
+        push_f(&mut buf, &mut off, b"CPU usage:          ", result.cpu_usage, b"%");
+        push(&mut buf, &mut off, b"=====================================\n");
+        trace::println(unsafe { std::str::from_utf8_unchecked(&buf[..off]) });
     }
 }

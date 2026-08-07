@@ -19,21 +19,21 @@ impl Future for UintrFuture {
 
         if seq != consumed {
             self.token.inner.consumed_seq.store(seq, Ordering::Release);
-            let name = &self.token.name;
-            eprintln!("[TRACE] async_wait: {} already pending (seq={} consumed={}), Ready", name, seq, consumed);
             return Poll::Ready(Ok(()));
         }
 
+        // 无锁注册 waker：使用 AtomicPtr CAS 替换原 Mutex<Option<Waker>>
+        // 关键：用户态中断可以在任何指令边界打断，所以这里绝对不能用锁
         let waker = cx.waker().clone();
-        *self.token.inner.waker.lock().unwrap() = Some(waker);
-        let name = &self.token.name;
-        eprintln!("[TRACE] async_wait: {} registered waker, sleeping until UINTR...", name);
+        self.token.register_waker(waker);
 
+        // 双重检查：注册 waker 后，中断可能在中间到达导致 seq 已变化
+        // 此时 set_pending 已经取走旧 waker 并 wake 过了，
+        // 我们刚注册的新 waker 不会被旧的 set_pending 调用，所以必须手动再检查一次
         let seq = self.token.inner.seq.load(Ordering::Acquire);
         let consumed = self.token.inner.consumed_seq.load(Ordering::Acquire);
         if seq != consumed {
             self.token.inner.consumed_seq.store(seq, Ordering::Release);
-            eprintln!("[TRACE] async_wait: {} race: interrupt arrived before sleep (seq={}), Ready", name, seq);
             return Poll::Ready(Ok(()));
         }
 
