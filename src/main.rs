@@ -4,6 +4,9 @@ mod compute;
 mod error;
 mod executor;
 mod frame_reader;
+mod ipc;
+mod ipc_receiver;
+mod ipc_sender;
 mod protocol;
 mod reactor;
 mod receiver;
@@ -49,6 +52,20 @@ fn main() -> Result<(), AppError> {
             let (cnt, interval) = (*count, *interval_ms);
             eprintln!("[INFO] UINTR Sender mode: count={cnt} interval_ms={interval}");
             ex.spawn(uintr_sender::run(cnt, interval));
+            ex.block_on();
+        }
+        cli::RunMode::IpcReceiver => {
+            eprintln!("[INFO] IPC Receiver mode, waiting for shared-memory messages");
+            let t = std::time::Instant::now();
+            ex.spawn(ipc_receiver::run());
+            ex.block_on();
+            // 接收方常被 SIGINT 终止，协程内统计不可达，改由 main 打印
+            ipc_receiver::print_stats(t.elapsed().as_secs_f64());
+        }
+        cli::RunMode::IpcSender { count, msg_size } => {
+            let (cnt, size) = (*count, *msg_size);
+            eprintln!("[INFO] IPC Sender mode: count={cnt} msg_size={size}");
+            ex.spawn(ipc_sender::run(cnt, size));
             ex.block_on();
         }
     }

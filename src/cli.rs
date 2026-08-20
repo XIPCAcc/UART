@@ -9,6 +9,8 @@ pub enum RunMode {
     Sender { rows_a: u8, cols_a: u8, cols_b: u8, count: u32 },
     UintrReceiver,
     UintrSender { count: u32, interval_ms: u64 },
+    IpcReceiver,
+    IpcSender { count: u32, msg_size: usize },
 }
 
 pub fn parse_args() -> Config {
@@ -21,6 +23,7 @@ pub fn parse_args() -> Config {
     let mut cols_b = 2u8;
     let mut count = 1u32;
     let mut interval_ms = 0u64;
+    let mut msg_size = 256usize;
 
     let mut i = 1;
     while i < args.len() {
@@ -73,6 +76,12 @@ pub fn parse_args() -> Config {
                     interval_ms = args[i].parse().unwrap_or(0);
                 }
             }
+            "--msg-size" => {
+                i += 1;
+                if i < args.len() {
+                    msg_size = args[i].parse().unwrap_or(256);
+                }
+            }
             "--help" | "-h" => {
                 print_help();
                 std::process::exit(0);
@@ -86,6 +95,8 @@ pub fn parse_args() -> Config {
         "sender" => RunMode::Sender { rows_a, cols_a, cols_b, count },
         "uintr-receiver" => RunMode::UintrReceiver,
         "uintr-sender" => RunMode::UintrSender { count, interval_ms },
+        "ipc-receiver" => RunMode::IpcReceiver,
+        "ipc-sender" => RunMode::IpcSender { count, msg_size },
         _ => RunMode::Receiver,
     };
 
@@ -101,14 +112,15 @@ fn print_help() {
          OPTIONS:\n    \
          -p, --port <PORT>        Serial port device [default: /dev/ttyS0]\n    \
          -b, --baud <RATE>        Baud rate [default: 115200]\n    \
-         -m, --mode <MODE>        Mode: receiver (default), sender, uintr-receiver, uintr-sender\n\
+         -m, --mode <MODE>        Mode: receiver (default), sender, uintr-receiver, uintr-sender, ipc-receiver, ipc-sender\n\
          \n\
          SENDER OPTIONS:\n    \
          --rows-a <N>             Rows of matrix A [default: 2]\n    \
          --cols-a <N>             Columns of A / rows of B [default: 3]\n    \
          --cols-b <N>             Columns of matrix B [default: 2]\n    \
-         -c, --count <N>          Number of requests/interrupts to send [default: 1]\n    \
+         -c, --count <N>          Number of requests/interrupts/messages to send [default: 1]\n    \
          --interval-ms <MS>       Interval between interrupts (uintr-sender) [default: 0]\n    \
+         --msg-size <N>           Message size in bytes (ipc-sender) [default: 256]\n    \
          -h, --help               Print help\n\
          \n\
          EXAMPLES:\n    \
@@ -122,6 +134,10 @@ fn print_help() {
          uart-matmul --mode uintr-receiver\n\
          \n    \
          # UINTR sender (send 100 interrupts)\n    \
-         uart-matmul --mode uintr-sender -c 100 --interval-ms 100"
+         uart-matmul --mode uintr-sender -c 100 --interval-ms 100\n\
+         \n    \
+         # Shared-memory + UINTR IPC receiver / sender\n    \
+         uart-matmul --mode ipc-receiver\n    \
+         uart-matmul --mode ipc-sender -c 100 --msg-size 256"
     );
 }

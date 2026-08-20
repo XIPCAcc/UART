@@ -41,99 +41,58 @@ impl UintrToken {
 
     /// 中断上下文中调用：**无锁，可安全重入，不可 panics（不可 unwind）**
     ///
-    /// 用 swap 原子取走 waker，避免和用户态 CAS 注册竞争。
-    /// 内部对 `waker.wake()` 额外做了 `catch_unwind`：
-    ///   如果 waker 在 wake 中 panic（最常见是 Box::from_raw 的悬空指针触发异常），
-    ///   直接吞没 panic，不做任何 I/O（不打印！绝对不拿 Stderr 锁），
-    ///   防止 panic hook 触发的 eprintln! 与主代码持有的锁重入死锁。
+    /// 复用 waker：不取走、不 drop，用 `wake_by_ref` 唤醒。
+    /// waker 一经 register_waker 注册，在 clear_waker 或 token drop 前保持有效，
+    /// 因此这里的 `&*ptr` 不会悬空。相比旧的「swap 取走 + wake 消费」方案，
+    /// 省去每次唤醒的 swap + Box::from_raw + Rc drop，减轻高频唤醒路径。
     pub fn set_pending(&self) {
         self.inner.seq.fetch_add(1, Ordering::Release);
-        let ptr = self.inner.waker.swap(WAKER_EMPTY, Ordering::AcqRel);
+        let ptr = self.inner.waker.load(Ordering::Acquire);
         if ptr != WAKER_EMPTY && !ptr.is_null() {
-            // 安全：ptr 只能来自 register_waker 里 Box::into_raw 的合法堆指针
-            let waker = unsafe { Box::from_raw(ptr) };
+            // 安全：ptr 来自 register_waker 的 Box::into_raw，且在 clear_waker 前有效
+            let waker = unsafe { &*ptr };
             // catch_unwind：隔离 panic，绝不允许它冒泡到中断上下文
-            // AssertUnwindSafe 合理：我们不关心 waker 内部状态被 unwind 破坏，
-            // 因为 swap 已经把它从 Inner.waker 里取走，之后不会再被使用。
             let _ = panic::catch_unwind(AssertUnwindSafe(|| {
-                waker.wake();
+                waker.wake_by_ref();
             }));
         }
     }
 
-    /// 用户态 poll 中调用：注册 waker（无锁 CAS 循环）
+    /// 用户态 poll 中调用：注册 waker（仅空位注册一次，之后复用）
     ///
-    /// 修复点：`compare_exchange_weak` 可能因为「值相等也假失败」而多次循环，
-    /// 旧代码每次循环都把同一个 `new_ptr` 去替换旧值，
-    /// 实际上旧值如果被中断的 `set_pending` 换成 WAKER_EMPTY 然后再被另一次
-    /// register_waker 写回 0xCCC，我们就会错误地把同一个 `new_ptr` 再写进去——
-    /// 造成 new_ptr 被两个栈帧同时认为是自己的，出现 double-free。
-    ///
-    /// 新策略：CAS 只执行 **最多一次**（用 `compare_exchange` 而非 `_weak`），
-    /// 失败立刻回收 new_ptr，再用同一个 waker `clone` 一份新的重试。
-    /// 代价是极端情况下多 clone 一次 Waker（含一次 Rc clone），
-    /// 但保证所有权永远是「一份 new_ptr → 一次 CAS」。
+    /// 单 task 场景下，同一 token 只被同一 task 反复注册，waker 不变。
+    /// 因此采用「惰性一次性注册」：首次把 waker 写入空位，之后直接复用，
+    /// 不再做任何 Box 分配或 CAS。配合 [set_pending] 的 `wake_by_ref`，
+    /// waker 一经注册在 clear_waker 之前保持有效，杜绝 use-after-free。
     pub fn register_waker(&self, waker: Waker) {
-        let mut owned_waker = Some(waker);
-        loop {
-            // 每次都分配一个 fresh 的 Box<Waker>（属于本轮 CAS）
-            let current_waker = match owned_waker.take() {
-                Some(w) => w,
-                None => {
-                    // 上一轮 CAS 失败导致 owned_waker 被回收；说明 waker 已被释放。
-                    // 正常情况下不会进入这个分支（因为 CAS 失败时我们会立刻重新 set 回去），
-                    // 但保留一个 safe net：从 set_pending 取出过的 waker 不能再复用到这里，
-                    // 所以如果真走到这说明逻辑错误，直接放弃注册（下次 poll 会再注册一次）
-                    return;
-                }
-            };
-            let new_ptr = Box::into_raw(Box::new(current_waker));
-            let cur = self.inner.waker.load(Ordering::Acquire);
-            // compare_exchange（strong 版）：值相等就一定成功，不会假失败
-            match self.inner.waker.compare_exchange(
-                cur, new_ptr,
-                Ordering::AcqRel, Ordering::Acquire,
-            ) {
-                Ok(_) => {
-                    // 成功替换，旧指针 cur 必须处理：
-                    if cur != WAKER_EMPTY && !cur.is_null() {
-                        // 安全：cur 是上一轮 Box::into_raw 留下的
-                        unsafe { drop(Box::from_raw(cur)); }
-                    }
-                    return;
-                }
-                Err(actual_cur) => {
-                    // CAS 失败：new_ptr 还没被写入，所有权必须还给我们（不然泄漏）
-                    unsafe { drop(Box::from_raw(new_ptr)); }
-                    // 把原来的 waker 还给 owned_waker（因为 clone 的是同一个 Waker，
-                    // 我们不需要再 clone 新的，直接复用这个 Waker 即可——只是把它的
-                    // Box 重新包一遍）。所以这里重新 Some(waker) 回去：
-                    // 但我们刚刚已经 move 了 current_waker，还要一个 Waker。
-                    // 最简单的办法：失败时我们 drop 了 new_ptr（里面装的 Waker 也
-                    // 会一起 drop），所以需要再 clone 一份——但 Waker 已经被 move 进
-                    // 之前的 Box 里被 drop 了。
-                    //
-                    // 为了避免「每失败一次都要 clone 一次」的麻烦，
-                    // 直接 break 放弃注册：**下一帧 poll 会再次调用 register_waker**，
-                    // 那时再注册即可。双检查机制（poll 末尾再读一次 seq）保证我们不会
-                    // 漏掉在"放弃注册"和"下次 poll"之间到达的中断。
-                    //
-                    // 实际上 CAS 在单线程（UINTR 只是异步打断，没有并行修改者）
-                    // 下失败率为 0，所以这里只是理论上的安全分支，基本不会走到。
-                    let _ = actual_cur; // 抑制未使用警告
-                    return;
-                }
-            }
+        // 快速路径：已有 waker，直接复用（传入的 clone 在返回时 drop）
+        if self.inner.waker.load(Ordering::Acquire) != WAKER_EMPTY {
+            return;
+        }
+        let new_ptr = Box::into_raw(Box::new(waker));
+        // 仅在空位写入一次；若期间被并发写入（理论上单 task 不会发生），
+        // 回收刚分配的 Box，继续复用已有 waker。
+        if self
+            .inner
+            .waker
+            .compare_exchange(WAKER_EMPTY, new_ptr, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            // 安全：new_ptr 是本函数刚 Box::into_raw 的，尚未被任何一方取走
+            unsafe { drop(Box::from_raw(new_ptr)); }
         }
     }
 
-    /// 用户态 poll 中调用：尝试取出当前 waker（用于 drop 清理 / 测试）
-    pub fn take_waker(&self) -> Option<Waker> {
+    /// 用户态 poll 返回 Ready 前调用：清理 waker。
+    ///
+    /// 任务完成（future Ready）后，token 里若残留 waker，对端后续再发中断会
+    /// 唤醒已结束的 task 导致「async fn resumed after completion」panic。
+    /// 因此在每次 Ready 前把 waker 从 token 取走并释放。
+    pub fn clear_waker(&self) {
         let ptr = self.inner.waker.swap(WAKER_EMPTY, Ordering::AcqRel);
         if ptr != WAKER_EMPTY && !ptr.is_null() {
-            Some(unsafe { *Box::from_raw(ptr) })
-        } else {
-            None
+            // 安全：ptr 来自 register_waker 的 Box::into_raw
+            unsafe { drop(Box::from_raw(ptr)); }
         }
     }
 }
