@@ -1,0 +1,19 @@
+[package]
+name = "test-shm"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+uintr-runtime.workspace = true
+libc.workspace = true
+
+[build-dependencies]
+cc = "1.0"
+
+[[bin]]
+name = "shm-sender"
+path = "src/bin/shm_sender.rs"
+
+[[bin]]
+name = "shm-receiver"
+path = "src/bin/shm_receiver.rs"

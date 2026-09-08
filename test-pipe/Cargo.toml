@@ -1,0 +1,19 @@
+[package]
+name = "test-pipe"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+uintr-runtime.workspace = true
+libc.workspace = true
+
+[build-dependencies]
+cc = "1.0"
+
+[[bin]]
+name = "pipe-sender"
+path = "src/bin/pipe_sender.rs"
+
+[[bin]]
+name = "pipe-receiver"
+path = "src/bin/pipe_receiver.rs"

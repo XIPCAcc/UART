@@ -1,13 +1,23 @@
-[package]
-name = "uart-matmul"
+[workspace]
+resolver = "2"
+members = [
+    "runtime",
+    "uart",
+    "test-uintr",
+    "test-shm",
+    "test-pipe",
+    "test-pipe-latency",
+]
+# 根目录 cargo build/run 默认只构建应用（uart-matmul）与其依赖
+default-members = ["runtime", "uart"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2021"
 
-[dependencies]
+[workspace.dependencies]
 libc = "0.2"
-
-[build-dependencies]
-cc = "1.0"
+uintr-runtime = { path = "runtime" }
 
 [profile.release]
 opt-level = 3

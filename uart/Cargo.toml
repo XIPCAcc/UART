@@ -1,0 +1,12 @@
+[package]
+name = "uart-matmul"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+libc.workspace = true
+uintr-runtime.workspace = true
+
+[[bin]]
+name = "uart-matmul"
+path = "src/main.rs"

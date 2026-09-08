@@ -1,0 +1,19 @@
+[package]
+name = "test-pipe-latency"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+uintr-runtime.workspace = true
+libc.workspace = true
+
+[build-dependencies]
+cc = "1.0"
+
+[[bin]]
+name = "pipe-latency-client"
+path = "src/bin/pipe_latency_client.rs"
+
+[[bin]]
+name = "pipe-latency-server"
+path = "src/bin/pipe_latency_server.rs"

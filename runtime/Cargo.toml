@@ -1,0 +1,10 @@
+[package]
+name = "uintr-runtime"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+libc.workspace = true
+
+[build-dependencies]
+cc = "1.0"
