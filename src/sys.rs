@@ -84,6 +84,27 @@ pub const EPOLLIN: u32 = 0x001;
 pub const EPOLLOUT: u32 = 0x004;
 pub const EPOLLET: u32 = 1 << 31; // 边缘触发，避免 CH340 虚假唤醒
 
+// ── TCP socket ───────────────────────────────────────────────
+// AF_INET:      IPv4 协议族
+// SOCK_STREAM:  面向连接的字节流（TCP）
+// SOL_SOCKET:   socket 层选项
+// SO_ERROR:     取 pending 错误码（非阻塞 connect 完成后据此判成败）
+// EINPROGRESS:  非阻塞 connect 正在进行中
+pub const AF_INET: c_int = 2;
+pub const SOCK_STREAM: c_int = 1;
+pub const SOL_SOCKET: c_int = 1;
+pub const SO_ERROR: c_int = 4;
+pub const EINPROGRESS: i32 = 115;
+
+/// IPv4 socket 地址（内核 struct sockaddr_in 布局）
+#[repr(C)]
+pub struct SockaddrIn {
+    pub sin_family: u16,
+    pub sin_port: u16, // 网络字节序
+    pub sin_addr: u32, // 网络字节序
+    pub sin_zero: [u8; 8],
+}
+
 #[repr(C, packed)]
 pub struct EpollEvent {
     pub events: u32,
@@ -159,6 +180,14 @@ extern "C" {
     // epoll_wait: 等待 epoll 事件，阻塞直到有事件或超时，返回就绪事件数
     #[link_name = "epoll_wait"]
     pub fn libc_epoll_wait(epfd: c_int, events: *mut EpollEvent, maxevents: c_int, timeout: c_int) -> c_int;
+    // eventfd: 创建事件计数 fd，用于从任意线程唤醒 epoll_wait
+    pub fn eventfd(initval: u32, flags: c_int) -> c_int;
+    // socket: 创建 TCP socket，返回 fd
+    pub fn socket(domain: c_int, ty: c_int, protocol: c_int) -> c_int;
+    // connect: 非阻塞 socket 上返回 -1/EINPROGRESS 表示连接进行中
+    pub fn connect(fd: c_int, addr: *const SockaddrIn, addrlen: u32) -> c_int;
+    // getsockopt: 非阻塞 connect 完成后取 SO_ERROR 判定成败（0 = 成功）
+    pub fn getsockopt(fd: c_int, level: c_int, optname: c_int, optval: *mut c_int, optlen: *mut u32) -> c_int;
 }
 
 // ── safe wrappers ───────────────────────────────────────────
@@ -245,6 +274,79 @@ pub fn epoll_wait(epfd: c_int, events: &mut [EpollEvent], timeout_ms: c_int) -> 
         Err(io::Error::last_os_error())
     } else {
         Ok(n as usize)
+    }
+}
+
+// ── eventfd ──────────────────────────────────────────────────
+
+/// 创建 eventfd，用于 poke 阻塞在 epoll_wait 的 IO 线程
+pub fn event_fd() -> io::Result<c_int> {
+    let fd = unsafe { eventfd(0, 0) };
+    if fd < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(fd)
+    }
+}
+
+/// 向 eventfd 写入 1（累加语义，多次 poke 只唤醒一次也够）
+pub fn eventfd_poke(fd: c_int) {
+    let v: u64 = 1;
+    let _ = raw_write(fd, &v.to_ne_bytes());
+}
+
+/// 读出 eventfd 计数并清零（IO 线程被唤醒后必须读，否则水平触发会一直报就绪）
+pub fn eventfd_drain(fd: c_int) {
+    let mut buf = [0u8; 8];
+    let _ = raw_read(fd, &mut buf);
+}
+
+/// 关闭 fd
+pub fn close_fd(fd: c_int) {
+    unsafe { close(fd) };
+}
+
+// ── TCP socket ───────────────────────────────────────────────
+
+/// 创建非阻塞 TCP socket 并发起连接。
+/// 返回 Ok(fd)：连接可能已完成或仍在进行（EINPROGRESS），
+/// 调用方需等 EPOLLOUT 就绪后用 socket_error() 判定最终成败。
+pub fn tcp_connect_v4(addr: std::net::Ipv4Addr, port: u16) -> io::Result<c_int> {
+    let fd = unsafe { socket(AF_INET, SOCK_STREAM, 0) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if let Err(e) = set_nonblocking(fd) {
+        close_fd(fd);
+        return Err(e);
+    }
+    let sa = SockaddrIn {
+        sin_family: AF_INET as u16,
+        sin_port: port.to_be(),
+        sin_addr: u32::from(addr).to_be(),
+        sin_zero: [0; 8],
+    };
+    let r = unsafe { connect(fd, &sa, std::mem::size_of::<SockaddrIn>() as u32) };
+    if r == 0 {
+        return Ok(fd); // 立即连接成功（本机回环常见）
+    }
+    let e = io::Error::last_os_error();
+    if e.raw_os_error() == Some(EINPROGRESS) {
+        return Ok(fd); // 连接进行中
+    }
+    close_fd(fd);
+    Err(e)
+}
+
+/// 非阻塞 connect 完成后取 SO_ERROR：0 表示连接成功
+pub fn socket_error(fd: c_int) -> io::Result<i32> {
+    let mut val: c_int = 0;
+    let mut len: u32 = std::mem::size_of::<c_int>() as u32;
+    let r = unsafe { getsockopt(fd, SOL_SOCKET, SO_ERROR, &mut val, &mut len) };
+    if r < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(val)
     }
 }
 

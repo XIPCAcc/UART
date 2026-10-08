@@ -26,7 +26,7 @@ impl AsyncSerial {
     pub fn open(path: &str, baud_rate: u32) -> io::Result<Self> {
         let fd = crate::serial_io::open(path, baud_rate)?;
         // 注册到 reactor（设为非阻塞 + 加入 epoll）
-        executor().reactor.borrow_mut().add(fd)?;
+        executor().reactor.add(fd)?;
         Ok(AsyncSerial { fd })
     }
 
@@ -47,7 +47,7 @@ impl AsyncSerial {
 
 impl Drop for AsyncSerial {
     fn drop(&mut self) {
-        executor().reactor.borrow_mut().delete(self.fd);
+        executor().reactor.delete(self.fd);
     }
 }
 
@@ -71,7 +71,6 @@ impl<'a> Future for ReadFuture<'a> {
                 // 串口 read 返回 0 表示暂无数据（VMIN=1 时不应发生，但作为防御）
                 executor()
                     .reactor
-                    .borrow_mut()
                     .modify_readable(self.serial.fd, cx.waker());
                 Poll::Pending
             }
@@ -98,7 +97,6 @@ impl<'a> Future for ReadFuture<'a> {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 executor()
                     .reactor
-                    .borrow_mut()
                     .modify_readable(self.serial.fd, cx.waker());
                 Poll::Pending
             }
@@ -130,7 +128,6 @@ impl<'a> Future for WriteAllFuture<'a> {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     executor()
                         .reactor
-                        .borrow_mut()
                         .modify_writable(fd, cx.waker());
                     return Poll::Pending;
                 }
@@ -169,7 +166,6 @@ impl<'a> Future for ReadFdFuture<'a> {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 executor()
                     .reactor
-                    .borrow_mut()
                     .modify_readable(self.fd, cx.waker());
                 Poll::Pending
             }
@@ -198,7 +194,6 @@ impl<'a> Future for WriteFdFuture<'a> {
                 Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                     executor()
                         .reactor
-                        .borrow_mut()
                         .modify_writable(self.fd, cx.waker());
                     return Poll::Pending;
                 }
