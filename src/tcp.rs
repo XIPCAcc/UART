@@ -41,6 +41,12 @@ impl AsyncTcpStream {
         Ok(AsyncTcpStream { fd })
     }
 
+    /// 包装 accept 得到的已连接 fd：注册进 epoll 即可读写，无需等 EPOLLOUT
+    fn from_accepted(fd: RawFd) -> io::Result<Self> {
+        executor().reactor.add(fd)?;
+        Ok(AsyncTcpStream { fd })
+    }
+
     pub fn read<'a>(&'a self, buf: &'a mut [u8]) -> ReadFuture<'a> {
         ReadFuture { stream: self, buf }
     }
@@ -54,6 +60,69 @@ impl Drop for AsyncTcpStream {
     fn drop(&mut self) {
         executor().reactor.delete(self.fd);
         sys::close_fd(self.fd);
+    }
+}
+
+// ── AsyncTcpListener ───────────────────────────────────────────
+
+/// 异步 TCP 监听器：bind + listen 后加入 epoll，accept 在 ET 模式下驱动
+pub struct AsyncTcpListener {
+    fd: RawFd,
+}
+
+impl AsyncTcpListener {
+    /// 绑定并监听 IPv4 地址
+    pub fn bind(addr: SocketAddr) -> io::Result<Self> {
+        let v4 = match addr {
+            SocketAddr::V4(a) => a,
+            SocketAddr::V6(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "only IPv4 is supported",
+                ))
+            }
+        };
+        let fd = sys::tcp_listen_v4(*v4.ip(), v4.port(), 128)?;
+        // 加入 epoll（ET，关注可读 = 有新连接到达）
+        executor().reactor.add(fd)?;
+        Ok(AsyncTcpListener { fd })
+    }
+
+    pub fn accept(&self) -> AcceptFuture<'_> {
+        AcceptFuture { listener: self }
+    }
+}
+
+impl Drop for AsyncTcpListener {
+    fn drop(&mut self) {
+        executor().reactor.delete(self.fd);
+        sys::close_fd(self.fd);
+    }
+}
+
+pub struct AcceptFuture<'a> {
+    listener: &'a AsyncTcpListener,
+}
+
+impl<'a> Future for AcceptFuture<'a> {
+    type Output = io::Result<(AsyncTcpStream, SocketAddr)>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        // TERM 唤醒（reactor.wake_all）后重新 poll：直接返回错误让 accept 循环退出
+        if crate::signal::TERM.load(std::sync::atomic::Ordering::Relaxed) {
+            return Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "terminated",
+            )));
+        }
+        match sys::accept_v4(self.listener.fd) {
+            Ok((fd, peer)) => Poll::Ready(AsyncTcpStream::from_accepted(fd).map(|s| (s, peer))),
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                executor().reactor.modify_readable(self.listener.fd, cx.waker());
+                Poll::Pending
+            }
+            Err(e) => Poll::Ready(Err(e)),
+        }
     }
 }
 

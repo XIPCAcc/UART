@@ -94,6 +94,7 @@ pub const AF_INET: c_int = 2;
 pub const SOCK_STREAM: c_int = 1;
 pub const SOL_SOCKET: c_int = 1;
 pub const SO_ERROR: c_int = 4;
+pub const SO_REUSEADDR: c_int = 2;
 pub const EINPROGRESS: i32 = 115;
 
 /// IPv4 socket 地址（内核 struct sockaddr_in 布局）
@@ -188,6 +189,14 @@ extern "C" {
     pub fn connect(fd: c_int, addr: *const SockaddrIn, addrlen: u32) -> c_int;
     // getsockopt: 非阻塞 connect 完成后取 SO_ERROR 判定成败（0 = 成功）
     pub fn getsockopt(fd: c_int, level: c_int, optname: c_int, optval: *mut c_int, optlen: *mut u32) -> c_int;
+    // setsockopt: 设置 socket 选项（SO_REUSEADDR 等）
+    pub fn setsockopt(fd: c_int, level: c_int, optname: c_int, optval: *const c_int, optlen: u32) -> c_int;
+    // bind: 将 socket 绑定到本地地址
+    pub fn bind(fd: c_int, addr: *const SockaddrIn, addrlen: u32) -> c_int;
+    // listen: 将 socket 置为监听态，backlog 为全连接队列长度
+    pub fn listen(fd: c_int, backlog: c_int) -> c_int;
+    // accept: 从监听 socket 取出一个已建立连接，返回新 fd（沿用监听 fd 的非阻塞标志）
+    pub fn accept(fd: c_int, addr: *mut SockaddrIn, addrlen: *mut u32) -> c_int;
 }
 
 // ── safe wrappers ───────────────────────────────────────────
@@ -336,6 +345,57 @@ pub fn tcp_connect_v4(addr: std::net::Ipv4Addr, port: u16) -> io::Result<c_int> 
     }
     close_fd(fd);
     Err(e)
+}
+
+/// 创建非阻塞 TCP 监听 socket（SO_REUSEADDR + bind + listen），返回监听 fd
+pub fn tcp_listen_v4(addr: std::net::Ipv4Addr, port: u16, backlog: c_int) -> io::Result<c_int> {
+    let fd = unsafe { socket(AF_INET, SOCK_STREAM, 0) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let one: c_int = 1;
+    unsafe {
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, std::mem::size_of::<c_int>() as u32)
+    };
+    if let Err(e) = set_nonblocking(fd) {
+        close_fd(fd);
+        return Err(e);
+    }
+    let sa = SockaddrIn {
+        sin_family: AF_INET as u16,
+        sin_port: port.to_be(),
+        sin_addr: u32::from(addr).to_be(),
+        sin_zero: [0; 8],
+    };
+    if unsafe { bind(fd, &sa, std::mem::size_of::<SockaddrIn>() as u32) } < 0 {
+        let e = io::Error::last_os_error();
+        close_fd(fd);
+        return Err(e);
+    }
+    if unsafe { listen(fd, backlog) } < 0 {
+        let e = io::Error::last_os_error();
+        close_fd(fd);
+        return Err(e);
+    }
+    Ok(fd)
+}
+
+/// 从监听 fd 接受一个连接，返回 (连接 fd, 对端地址)
+pub fn accept_v4(lfd: c_int) -> io::Result<(c_int, std::net::SocketAddr)> {
+    let mut sa = SockaddrIn {
+        sin_family: 0,
+        sin_port: 0,
+        sin_addr: 0,
+        sin_zero: [0; 8],
+    };
+    let mut len = std::mem::size_of::<SockaddrIn>() as u32;
+    let fd = unsafe { accept(lfd, &mut sa, &mut len) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let ip = std::net::Ipv4Addr::from(u32::from_be(sa.sin_addr));
+    let port = u16::from_be(sa.sin_port);
+    Ok((fd, std::net::SocketAddr::new(ip.into(), port)))
 }
 
 /// 非阻塞 connect 完成后取 SO_ERROR：0 表示连接成功

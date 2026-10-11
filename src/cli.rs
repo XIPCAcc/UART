@@ -7,8 +7,8 @@ pub struct Config {
 pub enum RunMode {
     Receiver,
     Sender { rows_a: u8, cols_a: u8, cols_b: u8, count: u32 },
-    /// 多核爬虫：目标 host:port、请求路径、投放间隔、每轮投放数
-    Crawler { addr: String, path: String, interval_ms: u64, burst: u32 },
+    /// 爬虫守护进程：TCP 监听地址，每个外部请求触发一个爬虫协程任务
+    Crawler { listen: String },
 }
 
 pub fn parse_args() -> Config {
@@ -20,10 +20,7 @@ pub fn parse_args() -> Config {
     let mut cols_a = 3u8;
     let mut cols_b = 2u8;
     let mut count = 1u32;
-    let mut addr = String::from("127.0.0.1:8080");
-    let mut path = String::from("/");
-    let mut interval_ms = 1000u64;
-    let mut burst = 1u32;
+    let mut listen = String::from("127.0.0.1:9090");
 
     let mut i = 1;
     while i < args.len() {
@@ -70,28 +67,10 @@ pub fn parse_args() -> Config {
                     count = args[i].parse().unwrap_or(1);
                 }
             }
-            "--addr" => {
+            "--listen" | "-l" => {
                 i += 1;
                 if i < args.len() {
-                    addr = args[i].clone();
-                }
-            }
-            "--path" => {
-                i += 1;
-                if i < args.len() {
-                    path = args[i].clone();
-                }
-            }
-            "--interval" | "-i" => {
-                i += 1;
-                if i < args.len() {
-                    interval_ms = args[i].parse().unwrap_or(1000);
-                }
-            }
-            "--burst" => {
-                i += 1;
-                if i < args.len() {
-                    burst = args[i].parse().unwrap_or(1);
+                    listen = args[i].clone();
                 }
             }
             "--help" | "-h" => {
@@ -105,7 +84,7 @@ pub fn parse_args() -> Config {
 
     let run_mode = match mode.as_str() {
         "sender" => RunMode::Sender { rows_a, cols_a, cols_b, count },
-        "crawler" => RunMode::Crawler { addr, path, interval_ms, burst },
+        "crawler" => RunMode::Crawler { listen },
         _ => RunMode::Receiver,
     };
 
@@ -129,11 +108,8 @@ fn print_help() {
          --cols-b <N>             Columns of matrix B [default: 2]\n    \
          -c, --count <N>          Number of requests to send [default: 1]\n\
          \n\
-         CRAWLER OPTIONS:\n    \
-         --addr <HOST:PORT>       Target HTTP server [default: 127.0.0.1:8080]\n    \
-         --path <PATH>            Request path [default: /]\n    \
-         -i, --interval <MS>      Task dispatch interval [default: 1000]\n    \
-         --burst <N>              Tasks dispatched per interval [default: 1]\n\
+         CRAWLER DAEMON OPTIONS:\n    \
+         -l, --listen <ADDR>      Listen address for crawl requests [default: 127.0.0.1:9090]\n\
          \n\
          -h, --help               Print help\n\
          \n\
@@ -144,7 +120,8 @@ fn print_help() {
          # Sender on ttyUSB0, 2x3 * 3x2, 5 requests\n    \
          uart-matmul -p /dev/ttyUSB0 --mode sender --rows-a 2 --cols-a 3 --cols-b 2 -c 5\n\
          \n    \
-         # Multi-core crawler: 10 tasks every 500ms against local server\n    \
-         uart-matmul --mode crawler --addr 127.0.0.1:8080 --interval 500 --burst 10"
+         # Crawler daemon: listen for crawl requests on 0.0.0.0:9090\n    \
+         uart-matmul --mode crawler --listen 0.0.0.0:9090\n    \
+         # then submit a crawl: echo \"127.0.0.1:8080 /path\" | nc 127.0.0.1 9090"
     );
 }

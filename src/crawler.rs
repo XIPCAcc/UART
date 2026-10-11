@@ -1,18 +1,21 @@
-// 多核爬虫：固定间隔定时投放任务，worker 动态扩缩容
+// 爬虫守护进程：TCP 监听外部请求，每个请求触发一个爬虫协程任务
 //
 // 行为：
-//   - 每 `interval_ms` 毫秒投放 `burst` 个 crawl_one 任务到全局队列
+//   - 在 --listen 地址上监听 TCP；请求为多行文本，每行一个爬虫任务：
+//     `<host:port> [path]`，逐行解析、逐行回 ACK、逐行 spawn
+//   - 每收到一行请求，回 ACK 并 spawn 一个 crawl_one 协程去抓目标
 //   - 任务多时执行器自动扩容起新 worker，任务完成时空闲 worker 自动缩容退出
-//   - 收到 SIGINT/SIGTERM 时 TERM 标志被置位，crawler 协程通过 sleep_ms 感知，
-//     退出前打印成功/失败/字节数汇总
+//   - 收到 SIGINT/SIGTERM 时 TERM 标志被置位，accept 被 wake_all 唤醒后返回
+//     错误，退出 accept 循环并打印成功/失败/字节数汇总
 
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::cli::Config;
 use crate::executor::executor;
 use crate::log;
-use crate::reactor::sleep_ms;
 use crate::signal;
+use crate::tcp::AsyncTcpListener;
 
 // ── 全局抓取统计（观测用）─────────────────────────────────────
 
@@ -22,41 +25,49 @@ static TOTAL_BYTES: AtomicU64 = AtomicU64::new(0);
 static SEQ:         AtomicU64 = AtomicU64::new(0);
 
 pub async fn run(config: &Config) {
-    let (addr, path, interval_ms, burst) = match &config.mode {
-        crate::cli::RunMode::Crawler { addr, path, interval_ms, burst } => {
-            (addr.as_str(), path.as_str(), *interval_ms, *burst)
-        }
+    let listen = match &config.mode {
+        crate::cli::RunMode::Crawler { listen } => listen.as_str(),
         _ => return,
     };
-    let addr: std::net::SocketAddr = match addr.parse() {
+    let listen_addr: SocketAddr = match listen.parse() {
         Ok(a) => a,
         Err(e) => {
-            log!("[ERROR] invalid address: {e}");
+            log!("[ERROR] invalid listen address: {e}");
             return;
         }
     };
 
+    let listener = match AsyncTcpListener::bind(listen_addr) {
+        Ok(l) => l,
+        Err(e) => {
+            log!("[ERROR] listen on {listen_addr} failed: {e}");
+            return;
+        }
+    };
     log!(
-        "[CRAWLER] start target={addr} path={path} interval={interval_ms}ms burst={burst} max_workers={}",
+        "[CRAWLER] daemon listening on {listen_addr}, max_workers={}",
         executor().max_workers()
     );
 
+    let mut req_seq = 0u32;
     loop {
         if signal::TERM.load(Ordering::Relaxed) {
             break;
         }
-
-        // 投放一批任务
-        for _ in 0..burst {
-            let seq = SEQ.fetch_add(1, Ordering::Relaxed) as u32;
-            executor().spawn(crawl_one(addr, path.to_string(), seq));
+        match listener.accept().await {
+            Ok((conn, peer)) => {
+                req_seq += 1;
+                // 每个连接一个协程：读请求 → 回 ACK → 投放爬虫任务
+                executor().spawn(handle_request(conn, peer, req_seq));
+            }
+            Err(e) => {
+                // TERM 唤醒后 accept 返回 Interrupted，属正常退出路径
+                if e.kind() != std::io::ErrorKind::Interrupted {
+                    log!("[ERROR] accept failed: {e}");
+                }
+                break;
+            }
         }
-        log!(
-            "[CRAWLER] dispatched {burst} tasks (workers: {})",
-            executor().active_workers() + 1
-        );
-
-        sleep_ms(interval_ms).await;
     }
 
     // 退出汇总
@@ -67,6 +78,73 @@ pub async fn run(config: &Config) {
         TOTAL_BYTES.load(Ordering::Relaxed),
         TOTAL_BYTES.load(Ordering::Relaxed) as f64 / 1024.0
     );
+}
+
+/// 处理一个外部请求连接：按行读取（每行一个 `<host:port> [path]` 爬虫请求），
+/// 逐行回 ACK 并投放爬虫任务，直到对端关闭（EOF 时处理无换行的最后一行）
+async fn handle_request(conn: crate::tcp::AsyncTcpStream, peer: SocketAddr, req_seq: u32) {
+    let mut buf = [0u8; 4096];
+    let mut pending: Vec<u8> = Vec::new();
+    loop {
+        let n = match conn.read(&mut buf).await {
+            Ok(0) => break, // EOF：对端关闭
+            Ok(n) => n,
+            Err(e) => {
+                log!("[DAEMON] req#{req_seq} read from {peer} failed: {e}");
+                return;
+            }
+        };
+        pending.extend_from_slice(&buf[..n]);
+        // 按行切分，逐行处理完整请求
+        while let Some(pos) = pending.iter().position(|&b| b == b'\n') {
+            let raw: Vec<u8> = pending.drain(..=pos).collect();
+            let line = String::from_utf8_lossy(&raw);
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let ack = dispatch_line(line, peer, req_seq);
+            if conn.write_all(ack.as_bytes()).await.is_err() {
+                return; // 对端已断开
+            }
+        }
+    }
+    // EOF 后处理最后一行无换行的残留
+    let line = String::from_utf8_lossy(&pending);
+    let line = line.trim();
+    if !line.is_empty() {
+        let ack = dispatch_line(line, peer, req_seq);
+        let _ = conn.write_all(ack.as_bytes()).await;
+    }
+}
+
+/// 处理一行爬虫请求：合法则 spawn 爬虫任务并返回 ACK 文本，非法则返回错误提示
+fn dispatch_line(line: &str, peer: SocketAddr, req_seq: u32) -> String {
+    match parse_request(line) {
+        Some((addr, path)) => {
+            let seq = SEQ.fetch_add(1, Ordering::Relaxed) as u32;
+            log!("[DAEMON] req#{req_seq} from {peer}: crawl {addr}{path} as task #{seq}");
+            let ack = format!("OK #{seq} {addr}{path}\n");
+            executor().spawn(crawl_one(addr, path, seq));
+            ack
+        }
+        None => {
+            log!("[DAEMON] req#{req_seq} from {peer}: bad request {line:?}");
+            "ERR usage: <host:port> [path]\n".to_string()
+        }
+    }
+}
+
+/// 解析请求行：`<host:port> [path]`，path 缺省为 "/"
+fn parse_request(line: &str) -> Option<(SocketAddr, String)> {
+    let mut parts = line.split_whitespace();
+    let addr: SocketAddr = parts.next()?.parse().ok()?;
+    let path = match parts.next() {
+        Some(p) if p.starts_with('/') => p.to_string(),
+        Some(p) => format!("/{p}"),
+        None => "/".to_string(),
+    };
+    Some((addr, path))
 }
 
 async fn crawl_one(addr: std::net::SocketAddr, path: String, seq: u32) {

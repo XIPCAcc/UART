@@ -1,11 +1,12 @@
 # uart-matmul
 
-通过串口进行矩阵乘法运算的 Linux 守护进程。支持两种模式：接收端（计算服务）和发送端（请求客户端）。
+通过串口进行矩阵乘法运算的 Linux 守护进程。支持三种模式：接收端（计算服务）、发送端（请求客户端）和爬虫守护进程（TCP 监听外部请求，多核异步执行）。
 
 ## 特性
 
 - 零外部依赖，仅使用 Rust 标准库和 raw libc FFI
-- epoll 事件驱动，空闲时零 CPU 占用
+- 自研多核 async 运行时：全局就绪队列 + worker 动态扩缩容，epoll 事件驱动，空闲时零 CPU 占用
+- 爬虫守护进程：TCP 监听外部请求，每行请求触发一个爬虫协程任务
 - 支持 16550 兼容 UART 串口
 - 支持 Intel 用户态中断（UINTR）kernel bypass
 - 自定义帧协议，带 CRC-8 校验
@@ -43,17 +44,52 @@ cargo build --release
     --rows-a 4 --cols-a 5 --cols-b 3 --count 10
 ```
 
+### 爬虫守护进程
+
+TCP 监听外部爬虫请求，每个请求创建一个异步爬虫协程（多核 worker 动态扩缩容）：
+
+```bash
+# 在 9090 端口监听
+./target/release/uart-matmul --mode crawler --listen 0.0.0.0:9090
+```
+
+请求协议为纯文本，每行一个任务：`<host:port> [path]`（path 缺省为 `/`）。
+一个 TCP 连接可携带多行请求，守护进程逐行回 ACK 并投放任务：
+
+```bash
+# 单个请求
+echo "127.0.0.1:8080 /path" | nc 127.0.0.1 9090
+# → OK #0 127.0.0.1:8080/path
+
+# 一条连接批量提交多个请求
+printf '127.0.0.1:8080 /\n127.0.0.1:8080 /other\n' | nc -w1 127.0.0.1 9090
+
+# 非法请求
+echo "bad" | nc 127.0.0.1 9090
+# → ERR usage: <host:port> [path]
+```
+
+一键压测脚本（自动启动测试 HTTP 服务、守护进程，批量提交请求后 SIGTERM 优雅退出）：
+
+```bash
+./run_crawler.sh                   # 默认 3 轮 x 32 个请求，轮间隔 10s
+./run_crawler.sh 500 20            # 3 轮 x 500 个请求，轮间隔 20ms
+./run_crawler.sh 1000 10 127.0.0.1:19090 / 127.0.0.1:9090 0-3 5
+#                REQS INTERVAL_MS  ADDR            PATH  LISTEN        CPUS ROUNDS
+```
+
 ### 命令行参数
 
 | 参数 | 简写 | 说明 | 默认值 |
 |------|------|------|--------|
 | `--port` | `-p` | 串口设备路径 | `/dev/ttyS0` |
 | `--baud` | `-b` | 波特率 | `115200` |
-| `--mode` | `-m` | 运行模式：`receiver` 或 `sender` | `receiver` |
+| `--mode` | `-m` | 运行模式：`receiver` / `sender` / `crawler` | `receiver` |
 | `--rows-a` | | 矩阵 A 的行数（仅 sender） | `2` |
 | `--cols-a` | | 矩阵 A 的列数 / B 的行数（仅 sender） | `3` |
 | `--cols-b` | | 矩阵 B 的列数（仅 sender） | `2` |
 | `--count` | `-c` | 发送请求次数（仅 sender） | `1` |
+| `--listen` | `-l` | 爬虫守护进程监听地址（仅 crawler） | `127.0.0.1:9090` |
 | `--help` | `-h` | 打印帮助 | |
 
 ## 测试
@@ -138,17 +174,28 @@ insmod 8250.ko uvec_fd=<fd> uvec_port=0
 uart/
 ├── src/
 │   ├── main.rs          # 入口，CLI 解析，运行模式分发
+│   ├── cli.rs           # 命令行参数解析
+│   ├── executor.rs      # 多核 async 执行器（全局队列 + worker 动态扩缩容）
+│   ├── reactor.rs       # epoll 事件循环 + 定时器 + eventfd 自唤醒
+│   ├── tcp.rs           # 异步 TCP：AsyncTcpStream / AsyncTcpListener
+│   ├── crawler.rs       # 爬虫守护进程（TCP 监听 → spawn 爬虫协程）
+│   ├── logger.rs        # 全局时间戳日志（log! 宏）
+│   ├── receiver.rs      # 接收端模式
+│   ├── sender.rs        # 发送端模式
 │   ├── compute.rs       # 矩阵乘法实现
 │   ├── protocol.rs      # 帧协议编解码，CRC-8
 │   ├── frame_reader.rs  # 帧解析器（状态机）
 │   ├── serial_io.rs     # 串口打开/配置/读写
-│   ├── sys.rs           # libc FFI 绑定（termios, epoll, signal）
+│   ├── async_serial.rs  # 异步串口封装
+│   ├── sys.rs           # libc FFI 绑定（termios, epoll, socket, signal）
 │   └── error.rs         # 错误类型定义
 ├── kernel/
 │   └── uart_uintr.c     # UINTR 内核模块
 ├── tools/
 │   └── send_matrix.py   # Python 发送端工具（参考）
-├── run_test.sh          # 测试脚本
+├── run_test.sh          # 串口收发测试脚本
+├── run_crawler.sh       # 爬虫守护进程压测脚本
+├── test_server.py       # 测试用 HTTP 服务
 ├── Cargo.toml
 └── README.md
 ```
