@@ -24,6 +24,7 @@ use std::time::{Duration, Instant};
 
 use crate::signal;
 use crate::sys;
+use crate::log;
 
 // ── 定时器条目 ─────────────────────────────────────────────────
 
@@ -214,7 +215,7 @@ impl Reactor {
                 }
             };
         }
-
+        log!("epoll_wait timeout: {}", timeout);
         let n = match sys::epoll_wait(epfd, &mut events, timeout) {
             Ok(n) => n,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => return true, // 信号打断，继续循环

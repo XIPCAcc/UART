@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 use crate::async_serial::{self, AsyncSerial};
 use crate::cli::Config;
 use crate::frame_reader;
+use crate::log;
 use crate::protocol;
 use crate::rng::Lcg;
 use crate::signal;
@@ -11,7 +12,7 @@ pub async fn run(config: &Config, rows_a: u8, cols_a: u8, cols_b: u8, count: u32
     let mut serial = match AsyncSerial::open(&config.port, config.baud) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[ERROR] Failed to open serial: {e}");
+            log!("[ERROR] Failed to open serial: {e}");
             return;
         }
     };
@@ -19,27 +20,27 @@ pub async fn run(config: &Config, rows_a: u8, cols_a: u8, cols_b: u8, count: u32
     let total = count as usize;
 
     // ── 阶段 1：批量发送所有请求 ──
-    eprintln!("[INFO] Pipelining: sending {} requests...", total);
+    log!("[INFO] Pipelining: sending {} requests...", total);
     for i in 0..total {
         if signal::TERM.load(Ordering::Relaxed) {
-            eprintln!("[INFO] Interrupted during send");
+            log!("[INFO] Interrupted during send");
             return;
         }
         let frame = build_request(rows_a, cols_a, cols_b, i as u8, i as u32);
         let frame_bytes = frame.to_bytes();
-        eprintln!(
+        log!(
             "[INFO] Sending request seq={}/{}: A={}x{} B={}x{} ({} bytes)",
             i, total, rows_a, cols_a, cols_a, cols_b, frame_bytes.len()
         );
 
         if let Err(e) = async_serial::write_frame(&mut serial, &frame).await {
-            eprintln!("[ERROR] Write error: {e}");
+            log!("[ERROR] Write error: {e}");
             return;
         }
     }
 
     // ── 阶段 2：批量接收所有响应（按 seq 匹配） ──
-    eprintln!("[INFO] Receiving {} responses...", total);
+    log!("[INFO] Receiving {} responses...", total);
     let mut responses: Vec<Option<protocol::Frame>> = (0..total).map(|_| None).collect();
     let mut received = 0usize;
 
@@ -48,7 +49,7 @@ pub async fn run(config: &Config, rows_a: u8, cols_a: u8, cols_b: u8, count: u32
 
     while received < total {
         if signal::TERM.load(Ordering::Relaxed) {
-            eprintln!("[INFO] Interrupted during receive");
+            log!("[INFO] Interrupted during receive");
             return;
         }
 
@@ -56,7 +57,7 @@ pub async fn run(config: &Config, rows_a: u8, cols_a: u8, cols_b: u8, count: u32
             Ok(0) => continue,
             Ok(n) => n,
             Err(e) => {
-                eprintln!("[ERROR] Read error: {e}");
+                log!("[ERROR] Read error: {e}");
                 return;
             }
         };
@@ -75,15 +76,15 @@ pub async fn run(config: &Config, rows_a: u8, cols_a: u8, cols_b: u8, count: u32
                         }
                     };
                     if seq < total && responses[seq].is_none() {
-                        eprintln!("[INFO] Got response seq={} ({}/{})", seq, received + 1, total);
+                        log!("[INFO] Got response seq={} ({}/{})", seq, received + 1, total);
                         responses[seq] = Some(response);
                         received += 1;
                     } else {
-                        eprintln!("[WARN] Duplicate or out-of-range seq={}", seq);
+                        log!("[WARN] Duplicate or out-of-range seq={}", seq);
                     }
                 }
                 Some(Err(e)) => {
-                    eprintln!("[WARN] Read error: {e}");
+                    log!("[WARN] Read error: {e}");
                     continue;
                 }
                 None => break,
@@ -92,7 +93,7 @@ pub async fn run(config: &Config, rows_a: u8, cols_a: u8, cols_b: u8, count: u32
     }
 
     // 按 seq 顺序打印结果
-    eprintln!("[INFO] All responses received, printing in order:");
+    log!("[INFO] All responses received, printing in order:");
     for (seq, resp) in responses.iter().enumerate() {
         match resp {
             Some(frame) => {
@@ -100,7 +101,7 @@ pub async fn run(config: &Config, rows_a: u8, cols_a: u8, cols_b: u8, count: u32
                 print_response(frame);
             }
             None => {
-                eprintln!("[WARN] Missing response for seq={}", seq);
+                log!("[WARN] Missing response for seq={}", seq);
             }
         }
     }
@@ -139,10 +140,10 @@ fn print_response(frame: &protocol::Frame) {
             }
         }
         protocol::Frame::Error { code } => {
-            eprintln!("Error: code {code:#04x}");
+            log!("Error: code {code:#04x}");
         }
         _ => {
-            eprintln!("Unexpected frame type received");
+            log!("Unexpected frame type received");
         }
     }
 }

@@ -11,8 +11,9 @@
 //     的定时器/发起关闭时 poke，使正阻塞在 epoll_wait 的 worker 0 立即返回
 //
 // 动态扩缩容（负载随时间波动，如定时投放的爬虫任务）：
-//   - 扩容：任务入队时若 队列深度 > 空闲 worker 数（worker 0 在 epoll_wait
-//     算 1 个空闲）且未达 max，CAS 占名额后新起 worker 线程
+//   - 扩容：任务入队时按 队列深度 / GROW_TASKS_PER_WORKER 向上取整推算所需
+//     worker 数，超过现有劳动力（动态 worker + 空闲的 worker 0）才起新线程，
+//     抑制"来一个任务建一个线程、首次 poll Pending 后又空退"的抖动
 //   - 缩容：动态 worker（id != 0）一旦发现队列空就立即减少 active 计数并
 //     退出线程释放 CPU 核，不做宽限等待；下一波任务到来时由扩容路径重新
 //     创建线程。worker 0 永不退出，队列空时阻塞在 epoll_wait 等事件
@@ -38,6 +39,7 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use std::time::{Duration, Instant};
 
+use crate::log;
 use crate::reactor::Reactor;
 use crate::signal;
 
@@ -54,7 +56,7 @@ pub(crate) fn executor() -> &'static Executor {
 
 /// worker 0 阻塞在 epoll_wait 的超时上限（ms）：
 /// 保证 SIGINT/SIGTERM 最迟在该间隔内被检查到
-const WORKER_IO_WAIT_MS: i32 = 100;
+const WORKER_IO_WAIT_MS: i32 = 10000;
 
 /// worker 0 忙时驱动 reactor 的 tick 间隔：
 /// 队列持续非空时每隔该时长非阻塞轮询一次 epoll（timeout=0），
@@ -63,6 +65,13 @@ const IO_TICK: Duration = Duration::from_millis(1);
 
 /// worker 0 打印运行状态行的间隔（队列深度/worker 数/任务计数）
 const STATUS_INTERVAL: Duration = Duration::from_secs(1);
+
+/// 扩容批处理阈值：每攒够这么多个排队任务才"值得"新增一个 worker。
+/// 没有该阈值时，任务一个到达就起一个线程，而任务首次 poll 往往立刻 Pending
+/// （等 connect/IO），worker 转头发现队列空又马上退出——频繁空建空退。
+/// 现在按 队列深度 / GROW_TASKS_PER_WORKER 向上取整 推算需要的 worker 数，
+/// 零星回队的 I/O 任务由现有 worker 消化，只有持续堆积才扩容。
+const GROW_TASKS_PER_WORKER: usize = 4;
 
 // ── Task ───────────────────────────────────────────────────────
 
@@ -91,8 +100,6 @@ pub struct Executor {
     max_workers: usize,
     /// 动态 worker 数（不含 worker 0）
     active_workers: AtomicUsize,
-    /// worker 0 是否正阻塞在 epoll_wait（扩容判定时算 1 个空闲 worker）
-    worker0_idle: AtomicBool,
     is_shutdown: AtomicBool,
     worker_handles: Mutex<Vec<std::thread::JoinHandle<()>>>,
     next_worker_id: AtomicUsize,
@@ -114,7 +121,6 @@ impl Executor {
             reactor:   Reactor::new()?,
             max_workers,
             active_workers: AtomicUsize::new(0),
-            worker0_idle:   AtomicBool::new(false),
             is_shutdown:    AtomicBool::new(false),
             worker_handles: Mutex::new(Vec::new()),
             next_worker_id: AtomicUsize::new(1),
@@ -135,8 +141,9 @@ impl Executor {
 
     /// 添加后台任务；Future 必须 Send（可能被任意 worker poll）
     pub fn spawn(&'static self, future: impl Future<Output = ()> + Send + 'static) {
+        let id = TASK_ID.fetch_add(1, Ordering::Relaxed);
         let task = Arc::new(Task {
-            id: TASK_ID.fetch_add(1, Ordering::Relaxed),
+            id,
             state: Mutex::new(TaskState {
                 future:  Some(Box::pin(future)),
                 queued:  true, // 创建即在队列中
@@ -144,10 +151,8 @@ impl Executor {
                 resched: false,
             }),
         });
-        let n = self.spawned_total.fetch_add(1, Ordering::Relaxed) + 1;
-        // 单任务不逐条打印（高频投放会刷屏）；任务量由 worker 0 的周期
-        // [STATUS] 行展示，这里仅保留计数
-        let _ = n;
+        self.spawned_total.fetch_add(1, Ordering::Relaxed);
+        log!("[TASK] #{id} create");
         self.push_task(task);
     }
 
@@ -164,15 +169,20 @@ impl Executor {
         self.maybe_grow(qlen);
     }
 
-    /// 扩容条件：排队任务多于能立即消化的空闲 worker，且未达核数上限。
-    /// 动态 worker 队列空即退出、没有等待态，唯一可能空闲的是 worker 0
-    /// （它正阻塞在 epoll_wait 时算 1 个）。
+    /// 扩容条件：按队列深度推算需要的 worker 数：
+    ///   desired = ceil(qlen / GROW_TASKS_PER_WORKER)
+    /// 现有劳动力 = 动态 worker + worker 0。worker 0 常驻、永远会回到队列
+    /// （正在 poll 时 poll 完即回；阻塞在 epoll_wait 时由 push 的 poke 叫醒），
+    /// 因此始终算 1 个，避免任务在 worker 0 上 spawn 时误判"无空闲劳动力"
+    /// 而空建一个马上退出的线程。desired 超过现有劳动力才起新 worker；
+    /// 未达核数上限前每次调用最多起 1 个（burst 连续入队会逐步扩满）。
     fn maybe_grow(&'static self, qlen: usize) {
         if self.is_shutdown.load(Ordering::Relaxed) {
             return;
         }
-        let idle = self.worker0_idle.load(Ordering::Relaxed) as usize;
-        if qlen <= idle {
+        let have = self.active_workers.load(Ordering::Relaxed) + 1; // +1 = worker 0
+        let desired = (qlen + GROW_TASKS_PER_WORKER - 1) / GROW_TASKS_PER_WORKER;
+        if desired <= have {
             return;
         }
         let cap = self.max_workers.saturating_sub(1); // 动态 worker 名额
@@ -195,7 +205,7 @@ impl Executor {
 
     fn spawn_worker(&'static self) {
         let id = self.next_worker_id.fetch_add(1, Ordering::Relaxed);
-        eprintln!(
+        log!(
             "[WORKER] create id={id} (active workers: {}, max: {})",
             self.active_workers.load(Ordering::Relaxed) + 1,
             self.max_workers
@@ -271,7 +281,7 @@ impl Executor {
                 let workers = self.active_workers.load(Ordering::Relaxed) + 1;
                 let spawned = self.spawned_total.load(Ordering::Relaxed);
                 let done = self.completed_total.load(Ordering::Relaxed);
-                eprintln!(
+                log!(
                     "[STATUS] queue={qlen} workers={workers}/{} spawned={spawned} completed={done} in-flight={}",
                     self.max_workers,
                     spawned.saturating_sub(done)
@@ -279,26 +289,22 @@ impl Executor {
             }
             let task = self.queue.lock().unwrap().pop_front();
             match task {
-                Some(t) => self.poll_task(t),
+                Some(t) => self.poll_task(id, t),
                 None if id != 0 => {
                     // 任务不足：立即退出线程释放 CPU 核
                     let prev = self.active_workers.fetch_sub(1, Ordering::Relaxed);
-                    eprintln!(
+                    log!(
                         "[WORKER] exit id={id} queue empty (active workers: {})",
                         prev
                     );
                     return;
                 }
                 None => {
-                    // worker 0：先回收已退出 worker 的句柄，再兼任 reactor
+                    // worker 0：先回收已退出 worker 的句柄，再兼任 reactor。
+                    // push 方无条件 poke eventfd，阻塞会被立即打断，无需向
+                    // 扩容逻辑标记"空闲"（worker 0 始终算作 1 个劳动力）。
                     self.reap_workers();
-                    // 置 idle 后 push 方读到 idle=1 会少起一个 worker——
-                    // 没问题：下面的 poke/eventfd 保证本线程立即醒来 drain。
-                    // idle 只用于扩容决策，正确性由 eventfd 水平触发兜底，
-                    // 故 Relaxed 足够。
-                    self.worker0_idle.store(true, Ordering::Relaxed);
                     let alive = self.reactor.wait(WORKER_IO_WAIT_MS);
-                    self.worker0_idle.store(false, Ordering::Relaxed);
                     last_io_tick = Instant::now();
                     if !alive || self.is_shutdown.load(Ordering::Acquire) {
                         return;
@@ -343,7 +349,8 @@ impl Executor {
     }
 
     /// poll 一个任务；panic 时记录 payload 并触发全局关闭
-    fn poll_task(&'static self, task: Arc<Task>) {
+    fn poll_task(&'static self, worker_id: usize, task: Arc<Task>) {
+        let id = task.id;
         let mut fut = {
             let mut s = task.state.lock().unwrap();
             s.queued = false;
@@ -351,6 +358,7 @@ impl Executor {
             s.polling = true;
             f
         };
+        log!("[TASK] #{id} poll start on worker {worker_id}");
         let waker = task_waker(task.clone());
         let mut cx = Context::from_waker(&waker);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -363,19 +371,24 @@ impl Executor {
             Ok(Poll::Ready(())) => {
                 // future 已 take 走，随作用域 drop；state 中 future 保持 None
                 self.completed_total.fetch_add(1, Ordering::Relaxed);
+                log!("[TASK] #{id} ready");
             }
             Ok(Poll::Pending) => {
+                let woken = s.resched;
                 s.future = Some(fut);
-                if s.resched {
+                if woken {
                     // poll 期间被唤醒：负责重新入队
                     s.resched = false;
                     s.queued = true;
                     drop(s);
+                    log!("[TASK] #{id} pending (woken during poll, requeue)");
                     self.push_task(task);
+                } else {
+                    log!("[TASK] #{id} pending (waiting for io/timer)");
                 }
             }
             Err(p) => {
-                eprintln!("[ERROR] task panicked, shutting down executor");
+                log!("[TASK] #{id} PANICKED, shutting down executor");
                 *self.panicked.lock().unwrap() = Some(p);
                 self.initiate_shutdown();
             }
@@ -444,6 +457,7 @@ impl Task {
     /// 只持 task 锁做状态变更，不触碰 future。
     fn wake_by_ref_(self: &Arc<Self>) {
         {
+            log!("wake_by_ref");
             let mut s = self.state.lock().unwrap();
             if s.future.is_none() && !s.polling {
                 return; // 已完成：丢弃这次唤醒

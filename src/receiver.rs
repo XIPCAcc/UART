@@ -7,6 +7,7 @@ use crate::compute;
 use crate::error;
 use crate::executor::executor;
 use crate::frame_reader;
+use crate::log;
 use crate::protocol;
 use crate::signal;
 
@@ -14,7 +15,7 @@ pub async fn run(config: &Config) {
     let mut serial = match AsyncSerial::open(&config.port, config.baud) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[ERROR] Failed to open serial: {e}");
+            log!("[ERROR] Failed to open serial: {e}");
             return;
         }
     };
@@ -28,7 +29,7 @@ pub async fn run(config: &Config) {
             Ok(0) => continue,
             Ok(n) => n,
             Err(e) => {
-                eprintln!("[ERROR] Read error: {e}");
+                log!("[ERROR] Read error: {e}");
                 break;
             }
         };
@@ -38,18 +39,18 @@ pub async fn run(config: &Config) {
         loop {
             match reader.try_advance() {
                 Some(Ok(frame)) => {
-                    eprintln!("[INFO] Received frame: {}", frame_summary(&frame));
-                    eprintln!("[DEBUG] reader: spawning compute_one_frame task");
+                    log!("[INFO] Received frame: {}", frame_summary(&frame));
+                    log!("[DEBUG] reader: spawning compute_one_frame task");
                     executor().spawn(compute_one_frame(fd, frame));
                 }
                 Some(Err(error::FrameError::CrcMismatch { expected, actual })) => {
-                    eprintln!(
+                    log!(
                         "[WARN] CRC mismatch: expected {expected:#04x}, got {actual:#04x}"
                     );
                     executor().spawn(write_error_frame(fd, error::ComputeError::CrcError as u8));
                 }
                 Some(Err(e)) => {
-                    eprintln!("[WARN] Frame read error: {e}");
+                    log!("[WARN] Frame read error: {e}");
                 }
                 None => break,
             }
@@ -72,13 +73,13 @@ async fn compute_one_frame(fd: RawFd, frame: protocol::Frame) {
             data: result.data,
         },
         Err(e) => {
-            eprintln!("[WARN] Compute error: {e}");
+            log!("[WARN] Compute error: {e}");
             protocol::Frame::Error { code: e as u8 }
         }
     };
     let bytes = response.to_bytes();
     if let Err(e) = async_serial::write_all_fd(fd, &bytes).await {
-        eprintln!("[ERROR] Write error: {e}");
+        log!("[ERROR] Write error: {e}");
     }
 }
 
@@ -86,7 +87,7 @@ async fn write_error_frame(fd: RawFd, code: u8) {
     let frame = protocol::Frame::Error { code };
     let bytes = frame.to_bytes();
     if let Err(e) = async_serial::write_all_fd(fd, &bytes).await {
-        eprintln!("[ERROR] Write error: {e}");
+        log!("[ERROR] Write error: {e}");
     }
 }
 

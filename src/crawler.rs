@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::cli::Config;
 use crate::executor::executor;
+use crate::log;
 use crate::reactor::sleep_ms;
 use crate::signal;
 
@@ -30,12 +31,12 @@ pub async fn run(config: &Config) {
     let addr: std::net::SocketAddr = match addr.parse() {
         Ok(a) => a,
         Err(e) => {
-            eprintln!("[ERROR] invalid address: {e}");
+            log!("[ERROR] invalid address: {e}");
             return;
         }
     };
 
-    eprintln!(
+    log!(
         "[CRAWLER] start target={addr} path={path} interval={interval_ms}ms burst={burst} max_workers={}",
         executor().max_workers()
     );
@@ -50,7 +51,7 @@ pub async fn run(config: &Config) {
             let seq = SEQ.fetch_add(1, Ordering::Relaxed) as u32;
             executor().spawn(crawl_one(addr, path.to_string(), seq));
         }
-        eprintln!(
+        log!(
             "[CRAWLER] dispatched {burst} tasks (workers: {})",
             executor().active_workers() + 1
         );
@@ -59,7 +60,7 @@ pub async fn run(config: &Config) {
     }
 
     // 退出汇总
-    eprintln!(
+    log!(
         "[CRAWLER] summary: ok={} fail={} total_bytes={} ({:.1} KiB)",
         OK_COUNT.load(Ordering::Relaxed),
         FAIL_COUNT.load(Ordering::Relaxed),
@@ -75,7 +76,7 @@ async fn crawl_one(addr: std::net::SocketAddr, path: String, seq: u32) {
         Ok(s) => s,
         Err(e) => {
             FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
-            eprintln!("[CRAWL] #{seq:<6} FAIL connect: {e}");
+            log!("[CRAWL] #{seq:<6} FAIL connect: {e}");
             return;
         }
     };
@@ -87,7 +88,7 @@ async fn crawl_one(addr: std::net::SocketAddr, path: String, seq: u32) {
     );
     if let Err(e) = stream.write_all(request.as_bytes()).await {
         FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
-        eprintln!("[CRAWL] #{seq:<6} FAIL write: {e}");
+        log!("[CRAWL] #{seq:<6} FAIL write: {e}");
         return;
     }
 
@@ -108,7 +109,7 @@ async fn crawl_one(addr: std::net::SocketAddr, path: String, seq: u32) {
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
             Err(e) => {
                 FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
-                eprintln!("[CRAWL] #{seq:<6} FAIL read after {total}B: {e}");
+                log!("[CRAWL] #{seq:<6} FAIL read after {total}B: {e}");
                 return;
             }
         }
@@ -118,7 +119,7 @@ async fn crawl_one(addr: std::net::SocketAddr, path: String, seq: u32) {
     match status {
         Some(200..=299) => {
             OK_COUNT.fetch_add(1, Ordering::Relaxed);
-            eprintln!(
+            log!(
                 "[CRAWL] #{seq:<6} OK   status={} bytes={total:<7} elapsed={:?}",
                 status.unwrap(),
                 start.elapsed()
@@ -126,14 +127,14 @@ async fn crawl_one(addr: std::net::SocketAddr, path: String, seq: u32) {
         }
         Some(code) => {
             FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
-            eprintln!(
+            log!(
                 "[CRAWL] #{seq:<6} FAIL status={code} bytes={total:<7} elapsed={:?}",
                 start.elapsed()
             );
         }
         None => {
             FAIL_COUNT.fetch_add(1, Ordering::Relaxed);
-            eprintln!(
+            log!(
                 "[CRAWL] #{seq:<6} FAIL no-status bytes={total:<7} elapsed={:?}",
                 start.elapsed()
             );

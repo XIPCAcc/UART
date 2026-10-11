@@ -60,19 +60,27 @@
 **就绪队列**：`Mutex<VecDeque<Arc<Task>>>` 全局单队列。每个 worker 每轮只
 `pop_front()` 取一个任务，poll 结束再取下一个（无批量 take_all）。
 
-**扩容判定 `maybe_grow(qlen)`**
+**扩容判定 `maybe_grow(qlen)`**（带批处理阈值，抑制空建空退）
 
 ```
 若 shutdown → 不扩
-idle = worker0_idle（worker 0 在 epoll_wait 中时为 1，否则 0）
-若 qlen <= idle → worker 0 能消化，不扩
+desired = ceil(qlen / GROW_TASKS_PER_WORKER)   // GROW_TASKS_PER_WORKER = 4
+have = active_workers + 1                      // worker 0 常驻，始终算 1 个
+若 desired <= have → 不扩
 否则 CAS(active_workers: a → a+1) 抢到名额 → spawn_worker()
 名额上限 max_workers - 1（worker 0 已占一个核）
 ```
 
+- worker 0 始终算 1 个劳动力：它正在 poll 时 poll 完即回队列，阻塞在
+  epoll_wait 时由 push 的无条件 poke 叫醒——任务在 worker 0 上被 spawn
+  （如 crawler 协程投放 burst）时不会误判"无空闲劳动力"
+- 队列深度按每 4 个任务配 1 个 worker 批量推算：零星回队的 I/O 任务由
+  现有 worker 消化，只有任务持续堆积才扩容
 - 用 `compare_exchange_weak` 循环处理多线程同时扩容的竞争
-- burst=50 是在 crawler 协程的同步 for 循环中连续 spawn，期间 worker 0 在 poll、
-  `idle=0`，因此一次 burst 内就把 worker 扩到上限，不依赖消费速度
+- burst 投放是 crawler 协程同步 for 循环中连续 spawn，队列深度迅速累积，
+  desired 随之阶梯式增长，一批投放内即可扩到 队列深度/4 对应数量（受核数
+  上限封顶）；任务首次 poll 多为 connect Pending，堆积的队列由扩出的
+  worker 并行消化
 - 计数与线程真实存活有极短窗口，极端情况可能多起一个 worker：不会超上限，
   多余 worker 发现队列空会立即退出
 
@@ -143,20 +151,19 @@ idle = worker0_idle（worker 0 在 epoll_wait 中时为 1，否则 0）
 
 ## 5. 关键流程
 
-### 5.1 一次 burst 的扩容时序（burst=50，4 核）
+### 5.1 一次 burst 的扩容时序（burst=32，8 核）
 
 ```
-worker 0 poll crawler 协程（worker0_idle=0）：
-  spawn#1 → qlen=1, idle=0, active=0 → CAS 0→1 → worker 1 创建
-  spawn#2 → qlen=2, idle=0, active=1 → worker 2 创建
-  spawn#3 → qlen=3, idle=0, active=2 → worker 3 创建（达上限 cap=3）
-  spawn#4..#50 → active 已满，任务留在队列
+worker 0 poll crawler 协程，同步投放（have = active + 1）：
+  spawn#1..#4  → qlen≤4，desired=1 ≤ have=1 → 不扩容，任务留队列
+  spawn#5      → qlen=5, desired=2 > 1 → worker 1 创建
+  spawn#9      → desired=3 > 2 → worker 2 创建
+  …每 4 个任务新增 1 个 worker，qlen=25 时扩到 worker 7（达上限 cap=7）
 crawler 协程 sleep_ms(interval).await → Pending
-worker 0 队列空 → epoll_wait
-动态 worker 各取一个任务 poll → 多为 connect Pending（挂到 reactor）
-  → 回队列再取，空了 → 立即 exit
+worker 0 回队列与动态 worker 一起 drain；任务多为 connect Pending 挂到 reactor
+队列被取空后动态 worker 立即 exit（缩容）
 I/O 就绪后 worker 0 的 epoll 收割事件 → waker 推任务回队列
-  → maybe_grow 按需重建 worker
+  → 回队任务零星时 desired 不超现有劳动力，不重建；堆积才再扩容
 ```
 
 ### 5.2 关闭流程

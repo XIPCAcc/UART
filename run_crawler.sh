@@ -20,8 +20,8 @@ set -u
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN="$ROOT/target/release/uart-matmul"
 
-INTERVAL="${1:-500}"
-BURST="${2:-10}"
+INTERVAL="${1:-3000}"
+BURST="${2:-32}"
 DURATION="${3:-3}"
 ADDR="${4:-127.0.0.1:19090}"
 REQ_PATH="${5:-/}"
@@ -75,7 +75,7 @@ taskset -c "$CPUS" timeout -s TERM "$DURATION" "$BIN" \
     --addr "$ADDR" \
     --path "$REQ_PATH" \
     --interval "$INTERVAL" \
-    --burst "$BURST"
+    --burst "$BURST" > crawler-$(date +%Y%m%d%H%M%S).log 2>&1
 RC=$?
 echo ""
 if [ "$RC" = 0 ] || [ "$RC" = 124 ]; then
