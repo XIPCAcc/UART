@@ -21,7 +21,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN="$ROOT/target/release/uart-matmul"
+BIN="$ROOT/target/release/crawler-daemon"
 
 REQS="${1:-32}"
 INTERVAL="${2:-10000}"
@@ -51,9 +51,9 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# ── 1. 编译 ─────────────────────────────────────────────────
-echo "==> Building (release) ..."
-(cd "$ROOT" && cargo build --release) 2>&1 | tail -2
+# ── 1. 编译（带详细日志，便于观察运行过程）─────────────────────
+echo "==> Building (release, verbose-log) ..."
+(cd "$ROOT" && cargo build --release --features verbose-log) 2>&1 | tail -2
 [ -x "$BIN" ] || { echo "ERROR: 二进制不存在: $BIN" >&2; exit 1; }
 
 # ── 2. 确定绑核范围 ─────────────────────────────────────────

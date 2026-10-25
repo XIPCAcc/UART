@@ -1,54 +1,81 @@
-// 基于 epoll 的 I/O 事件循环 — 多线程安全（&self 接口），支持定时器与自唤醒
+// 基于 epoll 的 I/O 事件循环 — 多线程安全（&self 接口）
 //
 // 职责：
-//   - 管理 epoll 实例，注册/修改/删除 fd（&self，内部用 Mutex 同步）
+//   - 管理 epoll 实例，注册/修改/删除 fd（&self，内部用自旋锁同步）
 //   - 将 Waker 与 fd@event 绑定，epoll 就绪时唤醒对应任务
-//   - 维护最小堆定时器，提供 sleep_ms().await 能力
-//   - eventfd 自唤醒：任意线程可 poke 阻塞在 epoll_wait 的 worker 0
-//     （新任务入队、新定时器、关闭）
 //
 // 调用模型：没有专用 IO 线程，wait() 由常驻 worker 0 在全局队列空时调用。
+// 无 eventfd：任务入队方自己就是 worker（spawn/wake 只发生在 poll 内），
+// push 后会继续 pop；关闭标志由 wait() 的 epoll_wait 超时兜底轮询
+// （WORKER_IO_WAIT_MS 即关停延迟上界）。
 // TERM 信号处理：worker 0 每次 wait 返回后检查 TERM，置位则 wake_all() 唤醒
-// 全部等待中的任务；各 future（Sleep/串口 read 等）在 poll 开头自查 TERM，
+// 全部等待中的任务；各 future（如串口 read）在 poll 开头自查 TERM，
 // 提前返回让顶层任务感知信号并退出，进而触发执行器 shutdown。
 
-use std::cmp::Ordering as CmpOrdering;
-use std::collections::{BinaryHeap, HashMap};
-use std::future::Future;
+use std::cell::UnsafeCell;
+use std::collections::HashMap;
 use std::io;
 use std::os::unix::io::RawFd;
-use std::pin::Pin;
-use std::sync::Mutex;
-use std::task::{Context, Poll, Waker};
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::task::Waker;
 
-use crate::signal;
 use crate::sys;
 use crate::log;
 
-// ── 定时器条目 ─────────────────────────────────────────────────
+// ── 自旋锁 ─────────────────────────────────────────────────────
+// 临界区均为纯内存操作（HashMap 增删查、读 shutdown），最坏情况
+// 是 wait() 收割事件的一趟遍历——微秒级。竞争时 CAS 空转比 futex 进内核
+// 睡眠/唤醒便宜几个数量级，且彻底消除该路径的系统调用。
 
-struct TimerEntry {
-    deadline: Instant,
-    waker:    Waker,
-    seq:      u64, // 序列号，消除同一 deadline 的堆序歧义
+struct SpinLock<T> {
+    locked: AtomicBool,
+    data:   UnsafeCell<T>,
 }
 
-impl PartialEq for TimerEntry {
-    fn eq(&self, other: &Self) -> bool {
-        self.deadline == other.deadline && self.seq == other.seq
+struct SpinGuard<'a, T> {
+    lock: &'a SpinLock<T>,
+}
+
+// 安全性：同一时刻只有一个持锁者能访问 data（AtomicBool 独占门）
+unsafe impl<T: Send> Send for SpinLock<T> {}
+unsafe impl<T: Send> Sync for SpinLock<T> {}
+
+impl<T> SpinLock<T> {
+    fn new(data: T) -> Self {
+        SpinLock {
+            locked: AtomicBool::new(false),
+            data:   UnsafeCell::new(data),
+        }
+    }
+
+    fn lock(&self) -> SpinGuard<'_, T> {
+        while self
+            .locked
+            .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            std::hint::spin_loop();
+        }
+        SpinGuard { lock: self }
     }
 }
-impl Eq for TimerEntry {}
-impl PartialOrd for TimerEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<CmpOrdering> {
-        Some(self.cmp(other))
+
+impl<T> std::ops::Deref for SpinGuard<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        unsafe { &*self.lock.data.get() }
     }
 }
-impl Ord for TimerEntry {
-    fn cmp(&self, other: &Self) -> CmpOrdering {
-        // BinaryHeap 是最大堆：取逆序让最早 deadline 在堆顶
-        other.deadline.cmp(&self.deadline).then(other.seq.cmp(&self.seq))
+
+impl<T> std::ops::DerefMut for SpinGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.lock.data.get() }
+    }
+}
+
+impl<T> Drop for SpinGuard<'_, T> {
+    fn drop(&mut self) {
+        self.lock.locked.store(false, Ordering::Release);
     }
 }
 
@@ -56,14 +83,10 @@ impl Ord for TimerEntry {
 
 struct Inner {
     epfd:     RawFd,
-    eventfd:  RawFd,
     /// token → waker；token = fd*2 可读 / fd*2+1 可写
     wakers:    HashMap<u64, Waker>,
     /// fd → 当前已注册的 epoll 事件掩码
     fd_events: HashMap<RawFd, u32>,
-    /// 最小堆定时器
-    timers:    BinaryHeap<TimerEntry>,
-    timer_seq: u64,
     /// block_on 退出时置位，wait() 返回 false 让 worker 0 退出
     shutdown:  bool,
 }
@@ -71,40 +94,29 @@ struct Inner {
 // ── Reactor ────────────────────────────────────────────────────
 
 pub struct Reactor {
-    inner: Mutex<Inner>,
+    inner: SpinLock<Inner>,
 }
 
 impl Reactor {
     pub fn new() -> io::Result<Self> {
         let epfd = sys::epoll_create()?;
-        let eventfd = sys::event_fd()?;
-        // eventfd 加入 epoll（水平触发），data = u64::MAX 作为特殊 token
-        let mut ev = unsafe { sys::EpollEvent::zeroed() };
-        ev.events = sys::EPOLLIN;
-        ev.data   = u64::MAX;
-        let r = unsafe { sys::epoll_ctl(epfd, sys::EPOLL_CTL_ADD, eventfd, &ev) };
-        if r < 0 {
-            sys::close_fd(eventfd);
-            sys::close_fd(epfd);
-            return Err(io::Error::last_os_error());
-        }
         Ok(Reactor {
-            inner: Mutex::new(Inner {
+            inner: SpinLock::new(Inner {
                 epfd,
-                eventfd,
                 wakers: HashMap::new(),
                 fd_events: HashMap::new(),
-                timers: BinaryHeap::new(),
-                timer_seq: 0,
                 shutdown: false,
             }),
         })
     }
 
-    /// 将 fd 加入 epoll 管理，并设为非阻塞模式（ET 模式，初始关注可读）
+    /// 将 fd 加入 epoll 管理（ET 模式，初始关注可读）。
+    /// 调用方负责保证 fd 已是非阻塞：
+    ///   - TCP 路径由 SOCK_NONBLOCK（socket/accept4）在创建时置好
+    ///   - 串口路径由 open(O_NOCTTY|O_NONBLOCK) 置好
+    /// 此处不再调 fcntl，避免每连接两次冗余系统调用。
     pub fn add(&self, fd: RawFd) -> io::Result<()> {
-        sys::set_nonblocking(fd)?;
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let mut ev = unsafe { sys::EpollEvent::zeroed() };
         ev.events = sys::EPOLLIN | sys::EPOLLET;
         ev.data   = fd as u64;
@@ -118,7 +130,7 @@ impl Reactor {
 
     /// 注册等待可读的 waker，将 EPOLLIN 加入事件掩码
     pub fn modify_readable(&self, fd: RawFd, waker: &Waker) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.wakers.insert(fd as u64 * 2, waker.clone());
         let cur = inner.fd_events.get(&fd).copied().unwrap_or(0);
         let new = cur | sys::EPOLLIN;
@@ -130,7 +142,7 @@ impl Reactor {
 
     /// 注册等待可写的 waker，将 EPOLLOUT 加入事件掩码
     pub fn modify_writable(&self, fd: RawFd, waker: &Waker) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         inner.wakers.insert(fd as u64 * 2 + 1, waker.clone());
         let cur = inner.fd_events.get(&fd).copied().unwrap_or(0);
         let new = cur | sys::EPOLLOUT;
@@ -142,54 +154,32 @@ impl Reactor {
 
     /// 从 epoll 和 waker 映射中移除 fd
     pub fn delete(&self, fd: RawFd) {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.lock();
         let _ = sys::epoll_del(inner.epfd, fd);
         inner.wakers.remove(&(fd as u64 * 2));
         inner.wakers.remove(&(fd as u64 * 2 + 1));
         inner.fd_events.remove(&fd);
     }
 
-    /// 从任意线程唤醒阻塞在 epoll_wait 的 worker 0（任务入队/关闭时用）
-    pub fn poke(&self) {
-        let inner = self.inner.lock().unwrap();
-        if !inner.shutdown {
-            sys::eventfd_poke(inner.eventfd);
-        }
-    }
-
-    /// 注册定时器：deadline 到后由 wait() 统一 wake
-    pub fn register_timer(&self, deadline: Instant, waker: Waker) {
-        let mut inner = self.inner.lock().unwrap();
-        let seq = inner.timer_seq;
-        inner.timer_seq += 1;
-        inner.timers.push(TimerEntry { deadline, waker, seq });
-        // 新定时器可能早于当前 epoll_wait 超时，poke 让 worker 0 重算
-        sys::eventfd_poke(inner.eventfd);
-    }
-
-    /// 置 shutdown 并唤醒 worker 0；此后 wait() 一律返回 false
+    /// 置 shutdown；此后 wait() 一律返回 false。
+    /// 不唤醒阻塞中的 worker 0：它最迟在 epoll_wait 超时（WORKER_IO_WAIT_MS）
+    /// 后返回并看到标志——这是无 eventfd 设计的关停延迟上界。
     pub fn shutdown(&self) {
-        let mut inner = self.inner.lock().unwrap();
-        inner.shutdown = true;
-        sys::eventfd_poke(inner.eventfd);
+        self.inner.lock().shutdown = true;
     }
 
     /// 唤醒所有注册中的 waker 并清空映射（TERM 时用：任务醒后自查 TERM 退出）
     pub fn wake_all(&self) {
         let wakers: Vec<Waker> = {
-            let mut inner = self.inner.lock().unwrap();
-            let mut v: Vec<Waker> = inner.wakers.drain().map(|(_, w)| w).collect();
-            while let Some(t) = inner.timers.pop() {
-                v.push(t.waker);
-            }
-            v
+            let mut inner = self.inner.lock();
+            inner.wakers.drain().map(|(_, w)| w).collect()
         };
         for w in wakers {
             w.wake();
         }
     }
 
-    /// 阻塞等待 epoll 事件 + 处理到期定时器。
+    /// 阻塞等待 epoll 事件。
     /// cap_ms: 超时上限（worker 0 用它保证周期性检查 TERM）。
     /// 返回 false 表示已 shutdown（worker 0 应退出）；true 表示继续循环。
     pub fn wait(&self, cap_ms: i32) -> bool {
@@ -197,26 +187,17 @@ impl Reactor {
             .map(|_| unsafe { sys::EpollEvent::zeroed() })
             .collect();
 
-        // 锁内算超时（最近到期定时器），解锁后再进内核 epoll_wait
+        // 锁内检查 shutdown 并取 epfd，解锁后再进内核 epoll_wait
         let epfd;
-        let timeout;
         {
-            let inner = self.inner.lock().unwrap();
+            let inner = self.inner.lock();
             if inner.shutdown {
                 return false;
             }
             epfd = inner.epfd;
-            let now = Instant::now();
-            timeout = match inner.timers.peek() {
-                None => cap_ms,
-                Some(t) => {
-                    let ms = t.deadline.saturating_duration_since(now).as_millis();
-                    ms.min(cap_ms.max(0) as u128) as i32
-                }
-            };
         }
-        log!("epoll_wait timeout: {}", timeout);
-        let n = match sys::epoll_wait(epfd, &mut events, timeout) {
+        log!("epoll_wait timeout: {}", cap_ms);
+        let n = match sys::epoll_wait(epfd, &mut events, cap_ms) {
             Ok(n) => n,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => return true, // 信号打断，继续循环
             Err(_) => return true,
@@ -224,15 +205,11 @@ impl Reactor {
 
         let mut wakers = Vec::new();
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = self.inner.lock();
             if inner.shutdown {
                 return false;
             }
             for ev in events.iter().take(n) {
-                if ev.data == u64::MAX {
-                    sys::eventfd_drain(inner.eventfd); // 水平触发必须清零
-                    continue;
-                }
                 let fd = ev.data as RawFd;
                 if ev.events & sys::EPOLLIN != 0 {
                     if let Some(w) = inner.wakers.remove(&(fd as u64 * 2)) {
@@ -243,15 +220,6 @@ impl Reactor {
                     if let Some(w) = inner.wakers.remove(&(fd as u64 * 2 + 1)) {
                         wakers.push(w);
                     }
-                }
-            }
-            // 收割到期定时器
-            let now = Instant::now();
-            while let Some(t) = inner.timers.peek() {
-                if t.deadline <= now {
-                    wakers.push(inner.timers.pop().unwrap().waker);
-                } else {
-                    break;
                 }
             }
         }
@@ -265,40 +233,7 @@ impl Reactor {
 
 impl Drop for Reactor {
     fn drop(&mut self) {
-        let inner = self.inner.lock().unwrap();
-        sys::close_fd(inner.eventfd);
+        let inner = self.inner.lock();
         sys::close_fd(inner.epfd);
-    }
-}
-
-// ── sleep future ───────────────────────────────────────────────
-
-/// 异步休眠。每次 Pending 都重新注册定时器：
-/// TERM 触发的 wake_all 会提前唤醒它，重新 poll 时若未到 deadline 需再次注册，
-/// 若已置 TERM 则直接 Ready，让上层任务尽快感知信号退出。
-pub struct Sleep {
-    deadline: Instant,
-}
-
-impl Future for Sleep {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        if signal::TERM.load(std::sync::atomic::Ordering::Relaxed)
-            || Instant::now() >= self.deadline
-        {
-            return Poll::Ready(());
-        }
-        crate::executor::executor()
-            .reactor
-            .register_timer(self.deadline, cx.waker().clone());
-        Poll::Pending
-    }
-}
-
-/// 异步休眠指定毫秒数
-pub fn sleep_ms(ms: u64) -> Sleep {
-    Sleep {
-        deadline: Instant::now() + Duration::from_millis(ms),
     }
 }

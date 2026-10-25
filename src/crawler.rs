@@ -11,6 +11,8 @@
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::elog;
+
 use crate::cli::Config;
 use crate::executor::executor;
 use crate::log;
@@ -25,14 +27,10 @@ static TOTAL_BYTES: AtomicU64 = AtomicU64::new(0);
 static SEQ:         AtomicU64 = AtomicU64::new(0);
 
 pub async fn run(config: &Config) {
-    let listen = match &config.mode {
-        crate::cli::RunMode::Crawler { listen } => listen.as_str(),
-        _ => return,
-    };
-    let listen_addr: SocketAddr = match listen.parse() {
+    let listen_addr: SocketAddr = match config.listen.parse() {
         Ok(a) => a,
         Err(e) => {
-            log!("[ERROR] invalid listen address: {e}");
+            elog!("[ERROR] invalid listen address: {e}");
             return;
         }
     };
@@ -40,7 +38,7 @@ pub async fn run(config: &Config) {
     let listener = match AsyncTcpListener::bind(listen_addr) {
         Ok(l) => l,
         Err(e) => {
-            log!("[ERROR] listen on {listen_addr} failed: {e}");
+            elog!("[ERROR] listen on {listen_addr} failed: {e}");
             return;
         }
     };
@@ -63,7 +61,7 @@ pub async fn run(config: &Config) {
             Err(e) => {
                 // TERM 唤醒后 accept 返回 Interrupted，属正常退出路径
                 if e.kind() != std::io::ErrorKind::Interrupted {
-                    log!("[ERROR] accept failed: {e}");
+                    elog!("[ERROR] accept failed: {e}");
                 }
                 break;
             }
@@ -71,7 +69,7 @@ pub async fn run(config: &Config) {
     }
 
     // 退出汇总
-    log!(
+    elog!(
         "[CRAWLER] summary: ok={} fail={} total_bytes={} ({:.1} KiB)",
         OK_COUNT.load(Ordering::Relaxed),
         FAIL_COUNT.load(Ordering::Relaxed),
@@ -169,7 +167,7 @@ fn parse_request(line: &str) -> Option<(SocketAddr, String)> {
 async fn crawl_one(addr: std::net::SocketAddr, path: String, seq: u32) {
     let start = std::time::Instant::now();
 
-    let mut stream = match crate::tcp::AsyncTcpStream::connect(addr).await {
+    let stream = match crate::tcp::AsyncTcpStream::connect(addr).await {
         Ok(s) => s,
         Err(e) => {
             FAIL_COUNT.fetch_add(1, Ordering::Relaxed);

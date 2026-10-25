@@ -1,12 +1,12 @@
 [package]
-name = "uart-matmul"
+name = "crawler-daemon"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 
 [features]
-# 默认关闭详细日志（log! 编译为空，零格式化/零 write 系统调用）；
+# 默认关闭详细日志（log! 编译为空，零格式化、零 write 系统调用）；
 # 调试时 cargo build --features verbose-log。基准测试必须用默认构建。
 verbose-log = []
 

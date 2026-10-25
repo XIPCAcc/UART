@@ -1,17 +1,9 @@
-mod async_serial;
 mod cli;
-mod compute;
 mod crawler;
 mod error;
 mod executor;
-mod frame_reader;
 mod logger;
-mod protocol;
 mod reactor;
-mod receiver;
-mod rng;
-mod sender;
-mod serial_io;
 mod signal;
 mod sys;
 mod tcp;
@@ -22,32 +14,34 @@ fn main() -> Result<(), AppError> {
     // 全局日志时间戳起点：进程一启动就固定
     logger::init();
 
+    // 自定义 panic hook：动态 worker 是裸 clone3 线程，默认 hook 的
+    // eprintln! 会经 thread::current() 触碰不存在的 pthread 描述符字段。
+    // 这里只走栈缓冲 + 直接 write(2)，任意线程上下文安全。
+    std::panic::set_hook(Box::new(|info| {
+        let payload = info.payload_as_str().unwrap_or("Box<dyn Any>");
+        match info.location() {
+            Some(loc) => logger::write_stderr(format_args!(
+                "thread panicked at {}:{}:{}: {}",
+                loc.file(),
+                loc.line(),
+                loc.column(),
+                payload
+            )),
+            None => logger::write_stderr(format_args!("thread panicked: {payload}")),
+        }
+    }));
+
     // config 与 executor 都泄漏为 'static：多核 worker 线程可能随时访问它们，
     // 进程退出前不回收，避免生命周期问题
     let config: &'static cli::Config = Box::leak(Box::new(cli::parse_args()));
     signal::register_signals()?;
 
     let ex: &'static executor::Executor =
-        Box::leak(Box::new(executor::Executor::new().map_err(AppError::Serial)?));
+        Box::leak(Box::new(executor::Executor::new().map_err(AppError::Io)?));
 
     log!("Started");
-
-    match &config.mode {
-        cli::RunMode::Receiver => {
-            log!("[INFO] Opening {} @ {} baud", config.port, config.baud);
-            log!("[INFO] Receiver mode, waiting for frames");
-            ex.block_on(receiver::run(config));
-        }
-        cli::RunMode::Sender { rows_a, cols_a, cols_b, count } => {
-            log!("[INFO] Opening {} @ {} baud", config.port, config.baud);
-            log!("[INFO] Sender mode: A={rows_a}x{cols_a} B={cols_a}x{cols_b} count={count}");
-            ex.block_on(sender::run(config, *rows_a, *cols_a, *cols_b, *count));
-        }
-        cli::RunMode::Crawler { .. } => {
-            log!("[INFO] Crawler mode, max workers: {}", ex.max_workers());
-            ex.block_on(crawler::run(config));
-        }
-    }
+    log!("[INFO] Crawler mode, max workers: {}", ex.max_workers());
+    ex.block_on(crawler::run(config));
 
     log!("[INFO] Shutting down");
     Ok(())

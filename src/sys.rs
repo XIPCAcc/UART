@@ -1,80 +1,92 @@
 // Raw FFI bindings to libc -- no external crate needed.
-// 所有串口操作通过直接调用 Linux libc 函数实现，不依赖任何第三方 crate。
+// 爬虫守护进程的 TCP/epoll 系统调用通过直接调用 Linux libc 函数实现，不依赖任何第三方 crate。
 use std::ffi::{c_char, c_int, c_void};
 use std::io;
 
-// ── open flags ──────────────────────────────────────────────
-// O_RDWR:   读写模式打开
-// O_NOCTTY: 不将此终端设为进程的控制终端（守护进程必须设置）
-pub const O_RDWR: c_int = 0o2;
-pub const O_NOCTTY: c_int = 0o400;
+// ── raw clone3 线程 ────────────────────────────────────────────
+// 动态 worker 不用 std::thread（每线程约 17 次 glibc NPTL/Rust std 自举
+// 系统调用），改用裸 clone3 + 手写 trampoline。配合 ld.so 的
+// _dl_allocate_tls 为子线程建立完整 TLS（glibc malloc 的 tcache、errno、
+// 栈金丝雀等都依赖它），线程生命周期系统调用降到 mmap+mprotect+clone3+exit
+// 共 4 次。
 
-// ── termios action ──────────────────────────────────────────
-// TCSANOW: 立即生效，不等待数据发送完毕
-pub const TCSANOW: c_int = 0;
+pub const CLONE_VM: u64 = 0x0000_0100;
+pub const CLONE_FS: u64 = 0x0000_0200;
+pub const CLONE_FILES: u64 = 0x0000_0400;
+pub const CLONE_SIGHAND: u64 = 0x0000_0800;
+pub const CLONE_THREAD: u64 = 0x0001_0000;
+pub const CLONE_SYSVSEM: u64 = 0x0004_0000;
+pub const CLONE_SETTLS: u64 = 0x0008_0000;
+pub const CLONE_CHILD_SETTID: u64 = 0x0100_0000; // 创建时把 tid 写入 child_tid
+pub const CLONE_CHILD_CLEARTID: u64 = 0x0020_0000; // 退出时清零 child_tid（回收信号）
 
-// ── c_cflag bits ────────────────────────────────────────────
-// CS8:    8 位数据位
-// CREAD:  允许接收
-// CLOCAL: 忽略调制解调器控制线（无载波检测），串口直连必须设置
-// BOTHER: 使用 c_ispeed/c_ospeed 字段指定波特率（而非 CBAUD 位）
-// CSTOPB: 2 位停止位（清除 = 1 位停止位）
-// PARENB: 启用校验位（清除 = 无校验）
-pub const CS8: u32 = 0o60;
-pub const CREAD: u32 = 0o200;
-pub const CLOCAL: u32 = 0o4000;
-pub const BOTHER: u32 = 0o100000;
-pub const CBAUD: u32 = 0o0010017;
-pub const CSTOPB: u32 = 0o100;
-pub const PARENB: u32 = 0o400;
+/// 裸 worker 线程的 clone3 标志组合：与 pthread 语义一致（共享地址空间/
+/// 文件表/信号处理，同线程组），外加自管理 TLS 与退出自清 tid
+pub const THREAD_CLONE_FLAGS: u64 = CLONE_VM
+    | CLONE_FS
+    | CLONE_FILES
+    | CLONE_SIGHAND
+    | CLONE_THREAD
+    | CLONE_SYSVSEM
+    | CLONE_SETTLS
+    | CLONE_CHILD_SETTID
+    | CLONE_CHILD_CLEARTID;
 
-// ── c_iflag bits (for cfmakeraw) ───────────────────────────
-// cfmakeraw 会清除这些标志，使串口工作在原始二进制模式：
-// IGNBRK: 忽略中断条件
-// BRKINT: 中断条件产生 SIGINT（原始模式下需要关闭）
-// PARMRK: 标记奇偶校验错误（原始模式下不需要）
-// ISTRIP: 去除第 8 位（原始模式需要完整 8 位）
-// INLCR:  将 NL 转为 CR（原始模式不做转换）
-// IGNCR:  忽略 CR（原始模式不做转换）
-// ICRNL:  将 CR 转为 NL（原始模式不做转换）
-// IXON:   启用软件流控 XON/XOFF（我们不需要流控）
-const IGNBRK: u32 = 0o1;
-const BRKINT: u32 = 0o2;
-const PARMRK: u32 = 0o10;
-const ISTRIP: u32 = 0o40;
-const INLCR: u32 = 0o100;
-const IGNCR: u32 = 0o200;
-const ICRNL: u32 = 0o400;
-const IXON: u32 = 0o2000;
+pub const PROT_NONE: c_int = 0;
+pub const PROT_READ: c_int = 1;
+pub const PROT_WRITE: c_int = 2;
+pub const MAP_PRIVATE: c_int = 0x02;
+pub const MAP_ANONYMOUS: c_int = 0x20;
+pub const MAP_STACK: c_int = 0x20000;
 
-// ── c_oflag bits ────────────────────────────────────────────
-// OPOST: 启用输出处理（原始模式需要关闭，否则 \n 会被转为 \r\n）
-const OPOST: u32 = 0o1;
+/// kernel struct clone_args（88 字节，CLONE_ARGS_SIZE_VER2）
+#[repr(C)]
+pub struct CloneArgs {
+    pub flags: u64,
+    pub pidfd: u64,
+    pub child_tid: u64,
+    pub parent_tid: u64,
+    pub exit_signal: u64, // CLONE_THREAD 下必须为 0
+    pub stack: u64,       // 栈区最低地址
+    pub stack_size: u64,  // 内核置子线程 rsp = stack + stack_size
+    pub tls: u64,         // CLONE_SETTLS：子线程 fs base（TCB 指针）
+    pub set_tid: u64,
+    pub set_tid_size: u64,
+    pub cgroup: u64,
+}
 
-// ── c_lflag bits ────────────────────────────────────────────
-// ECHO:   回显输入字符（串口二进制通信必须关闭）
-// ECHONL: 回显 NL（原始模式不需要）
-// ICANON: 规范模式（行缓冲，按行读取；原始模式需要关闭以逐字节读取）
-// ISIG:   识别信号字符（Ctrl+C 等；原始模式不识别）
-// IEXTEN: 扩展输入处理（原始模式不需要）
-const ECHO: u32 = 0o10;
-const ECHONL: u32 = 0o100;
-const ICANON: u32 = 0o2;
-const ISIG: u32 = 0o1;
-const IEXTEN: u32 = 0o100000;
-
-// ── c_cc indexes ────────────────────────────────────────────
-// VMIN:  read() 返回的最小字节数
-// VTIME: read() 的超时时间，单位为 0.1 秒
-const VMIN: usize = 6;
-const VTIME: usize = 5;
-
-// ── baud rate ───────────────────────────────────────────────
-
-// ── fcntl ────────────────────────────────────────────────────
-pub const F_GETFL: c_int = 3;
-pub const F_SETFL: c_int = 4;
-pub const O_NONBLOCK: c_int = 0o4000;
+/// clone3 + 子线程 trampoline（x86_64，SysV：rdi=args, rsi=entry, rdx=arg）。
+/// 父路径：返回子 tid（>0）或 -errno（<0）。
+/// 子路径：内核把全部通用寄存器复制给子线程，r12/r13 在 syscall 前装入
+/// entry/arg 并被继承；子线程以新栈顶为 rsp 调 entry(arg)，返回后用
+/// exit(60) 只终止本线程（不能 return——栈上没有返回地址；不能用
+/// exit_group——那会杀掉整个进程）。
+#[unsafe(naked)]
+pub unsafe extern "C" fn raw_clone3(args: *const CloneArgs, entry: usize, arg: usize) -> i64 {
+    core::arch::naked_asm!(
+        "push r12",
+        "push r13",
+        "mov r12, rsi", // entry（跨 clone3 继承给子线程）
+        "mov r13, rdx", // arg
+        "mov eax, 435", // SYS_clone3
+        "mov esi, 88",  // sizeof(CloneArgs)，rdi 已是 args
+        "syscall",
+        "test rax, rax",
+        "jz 2f",
+        // ── 父路径 ──
+        "pop r13",
+        "pop r12",
+        "ret",
+        // ── 子路径（rax=0，rsp=新栈顶=stack+stack_size，16 字节对齐）──
+        "2:",
+        "mov rdi, r13",
+        "call r12",
+        "mov eax, 60", // SYS_exit：仅终止调用线程
+        "xor edi, edi",
+        "syscall",
+        "ud2",
+    );
+}
 
 // ── epoll ────────────────────────────────────────────────────
 pub const EPOLL_CTL_ADD: c_int = 1;
@@ -82,7 +94,7 @@ pub const EPOLL_CTL_MOD: c_int = 3;
 pub const EPOLL_CTL_DEL: c_int = 2;
 pub const EPOLLIN: u32 = 0x001;
 pub const EPOLLOUT: u32 = 0x004;
-pub const EPOLLET: u32 = 1 << 31; // 边缘触发，避免 CH340 虚假唤醒
+pub const EPOLLET: u32 = 1 << 31; // 边缘触发
 
 // ── TCP socket ───────────────────────────────────────────────
 // AF_INET:      IPv4 协议族
@@ -92,6 +104,8 @@ pub const EPOLLET: u32 = 1 << 31; // 边缘触发，避免 CH340 虚假唤醒
 // EINPROGRESS:  非阻塞 connect 正在进行中
 pub const AF_INET: c_int = 2;
 pub const SOCK_STREAM: c_int = 1;
+// SOCK_NONBLOCK: socket()/accept4() 时直接建非阻塞 fd，省掉后续 fcntl 两次调用
+pub const SOCK_NONBLOCK: c_int = 0o4000;
 pub const SOL_SOCKET: c_int = 1;
 pub const SO_ERROR: c_int = 4;
 pub const SO_REUSEADDR: c_int = 2;
@@ -124,54 +138,15 @@ impl EpollEvent {
 pub const SIGINT: c_int = 2;
 pub const SIGTERM: c_int = 15;
 
-// ── termios struct (glibc layout, x86_64) ───────────────────
-// 这是 Linux 内核用来配置终端/串口参数的核心结构体。
-// 对应 glibc 的 <termbits.h> 定义，x86_64 平台布局。
-// 注意：此布局是平台相关的，ARM 等其他架构的 c_cc 大小和对齐可能不同。
-//
-// c_iflag:  输入模式标志 — 控制输入处理（换行转换、软件流控等）
-// c_oflag:  输出模式标志 — 控制输出处理（换行转换等）
-// c_cflag:  控制模式标志 — 控制波特率、数据位、校验位、停止位等
-// c_lflag:  本地模式标志 — 控制回显、规范模式、信号识别等
-// c_line:   线路规程（N_TTY = 0，默认值）
-// c_cc:     特殊字符数组 — 定义 VMIN/VTIME 等控制字符的值
-// c_ispeed: 输入波特率
-// c_ospeed: 输出波特率
-#[repr(C)]
-pub struct Termios {
-    pub c_iflag: u32,
-    pub c_oflag: u32,
-    pub c_cflag: u32,
-    pub c_lflag: u32,
-    pub c_line: u8,
-    pub c_cc: [u8; 32],
-    pub c_ispeed: u32,
-    pub c_ospeed: u32,
-}
-
-impl Termios {
-    pub unsafe fn zeroed() -> Self {
-        std::mem::zeroed()
-    }
-}
-
 // ── extern "C" declarations ─────────────────────────────────
 // 直接声明 libc 函数，链接器会自动链接 libc.so
 extern "C" {
-    // open: 打开文件/设备，返回文件描述符，失败返回 -1
-    pub fn open(pathname: *const c_char, flags: c_int, mode: c_int) -> c_int;
     // close: 关闭文件描述符，成功返回 0，失败返回 -1
     pub fn close(fd: c_int) -> c_int;
     // read: 从文件描述符读取数据，返回实际读取字节数，失败返回 -1
     pub fn read(fd: c_int, buf: *mut c_void, count: usize) -> isize;
     // write: 向文件描述符写入数据，返回实际写入字节数，失败返回 -1
     pub fn write(fd: c_int, buf: *const c_void, count: usize) -> isize;
-    // fcntl: 文件描述符控制操作
-    pub fn fcntl(fd: c_int, cmd: c_int, arg: c_int) -> c_int;
-    // tcgetattr: 获取终端属性到 termios 结构体，成功返回 0
-    pub fn tcgetattr(fd: c_int, termios_p: *mut Termios) -> c_int;
-    // tcsetattr: 将 termios 结构体的设置应用到终端，成功返回 0
-    pub fn tcsetattr(fd: c_int, optional_actions: c_int, termios_p: *const Termios) -> c_int;
     // signal: 注册信号处理函数，返回之前的处理函数地址，失败返回 SIG_ERR (usize::MAX)
     pub fn signal(signum: c_int, handler: usize) -> usize;
     // epoll_create1: 创建 epoll 实例，flags 为 0 或 EPOLL_CLOEXEC，返回 epoll fd
@@ -181,8 +156,6 @@ extern "C" {
     // epoll_wait: 等待 epoll 事件，阻塞直到有事件或超时，返回就绪事件数
     #[link_name = "epoll_wait"]
     pub fn libc_epoll_wait(epfd: c_int, events: *mut EpollEvent, maxevents: c_int, timeout: c_int) -> c_int;
-    // eventfd: 创建事件计数 fd，用于从任意线程唤醒 epoll_wait
-    pub fn eventfd(initval: u32, flags: c_int) -> c_int;
     // socket: 创建 TCP socket，返回 fd
     pub fn socket(domain: c_int, ty: c_int, protocol: c_int) -> c_int;
     // connect: 非阻塞 socket 上返回 -1/EINPROGRESS 表示连接进行中
@@ -195,8 +168,16 @@ extern "C" {
     pub fn bind(fd: c_int, addr: *const SockaddrIn, addrlen: u32) -> c_int;
     // listen: 将 socket 置为监听态，backlog 为全连接队列长度
     pub fn listen(fd: c_int, backlog: c_int) -> c_int;
-    // accept: 从监听 socket 取出一个已建立连接，返回新 fd（沿用监听 fd 的非阻塞标志）
-    pub fn accept(fd: c_int, addr: *mut SockaddrIn, addrlen: *mut u32) -> c_int;
+    // accept4: 同 accept，但可用 flags 直接建非阻塞 fd（省每连接两次 fcntl）
+    pub fn accept4(fd: c_int, addr: *mut SockaddrIn, addrlen: *mut u32, flags: c_int) -> c_int;
+    // mmap: 分配匿名映射（worker 栈）
+    pub fn mmap(addr: *mut c_void, len: usize, prot: c_int, flags: c_int, fd: c_int, offset: i64) -> *mut c_void;
+    // munmap: 释放映射
+    pub fn munmap(addr: *mut c_void, len: usize) -> c_int;
+    // mprotect: 改页保护（栈保护页）
+    pub fn mprotect(addr: *mut c_void, len: usize, prot: c_int) -> c_int;
+    // dlvsym: 按版本号取动态符号（GLIBC_PRIVATE 的 ld.so 内部符号只能这样拿）
+    pub fn dlvsym(handle: *mut c_void, symbol: *const c_char, version: *const c_char) -> *mut c_void;
 }
 
 // ── safe wrappers ───────────────────────────────────────────
@@ -229,18 +210,6 @@ pub fn epoll_create() -> io::Result<c_int> {
     }
 }
 
-pub fn epoll_add(epfd: c_int, fd: c_int) -> io::Result<()> {
-    let mut ev = unsafe { EpollEvent::zeroed() };
-    ev.events = EPOLLIN | EPOLLET;
-    ev.data = fd as u64;
-    let ret = unsafe { epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev) };
-    if ret < 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
-}
-
 pub fn epoll_mod(epfd: c_int, fd: c_int, events: u32) -> io::Result<()> {
     let mut ev = unsafe { EpollEvent::zeroed() };
     ev.events = events | EPOLLET;
@@ -262,18 +231,6 @@ pub fn epoll_del(epfd: c_int, fd: c_int) -> io::Result<()> {
     }
 }
 
-pub fn set_nonblocking(fd: c_int) -> io::Result<()> {
-    let flags = unsafe { fcntl(fd, F_GETFL, 0) };
-    if flags < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    let ret = unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) };
-    if ret < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(())
-}
-
 /// epoll_wait: 阻塞等待事件，返回就绪事件数（0 表示超时）
 pub fn epoll_wait(epfd: c_int, events: &mut [EpollEvent], timeout_ms: c_int) -> io::Result<usize> {
     let n = unsafe {
@@ -284,30 +241,6 @@ pub fn epoll_wait(epfd: c_int, events: &mut [EpollEvent], timeout_ms: c_int) -> 
     } else {
         Ok(n as usize)
     }
-}
-
-// ── eventfd ──────────────────────────────────────────────────
-
-/// 创建 eventfd，用于 poke 阻塞在 epoll_wait 的 IO 线程
-pub fn event_fd() -> io::Result<c_int> {
-    let fd = unsafe { eventfd(0, 0) };
-    if fd < 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(fd)
-    }
-}
-
-/// 向 eventfd 写入 1（累加语义，多次 poke 只唤醒一次也够）
-pub fn eventfd_poke(fd: c_int) {
-    let v: u64 = 1;
-    let _ = raw_write(fd, &v.to_ne_bytes());
-}
-
-/// 读出 eventfd 计数并清零（IO 线程被唤醒后必须读，否则水平触发会一直报就绪）
-pub fn eventfd_drain(fd: c_int) {
-    let mut buf = [0u8; 8];
-    let _ = raw_read(fd, &mut buf);
 }
 
 /// 关闭 fd
@@ -321,13 +254,10 @@ pub fn close_fd(fd: c_int) {
 /// 返回 Ok(fd)：连接可能已完成或仍在进行（EINPROGRESS），
 /// 调用方需等 EPOLLOUT 就绪后用 socket_error() 判定最终成败。
 pub fn tcp_connect_v4(addr: std::net::Ipv4Addr, port: u16) -> io::Result<c_int> {
-    let fd = unsafe { socket(AF_INET, SOCK_STREAM, 0) };
+    // SOCK_NONBLOCK 在创建时就置好非阻塞，省掉 fcntl(F_GETFL)+fcntl(F_SETFL)
+    let fd = unsafe { socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
-    }
-    if let Err(e) = set_nonblocking(fd) {
-        close_fd(fd);
-        return Err(e);
     }
     let sa = SockaddrIn {
         sin_family: AF_INET as u16,
@@ -349,7 +279,7 @@ pub fn tcp_connect_v4(addr: std::net::Ipv4Addr, port: u16) -> io::Result<c_int> 
 
 /// 创建非阻塞 TCP 监听 socket（SO_REUSEADDR + bind + listen），返回监听 fd
 pub fn tcp_listen_v4(addr: std::net::Ipv4Addr, port: u16, backlog: c_int) -> io::Result<c_int> {
-    let fd = unsafe { socket(AF_INET, SOCK_STREAM, 0) };
+    let fd = unsafe { socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -357,10 +287,6 @@ pub fn tcp_listen_v4(addr: std::net::Ipv4Addr, port: u16, backlog: c_int) -> io:
     unsafe {
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, std::mem::size_of::<c_int>() as u32)
     };
-    if let Err(e) = set_nonblocking(fd) {
-        close_fd(fd);
-        return Err(e);
-    }
     let sa = SockaddrIn {
         sin_family: AF_INET as u16,
         sin_port: port.to_be(),
@@ -389,7 +315,8 @@ pub fn accept_v4(lfd: c_int) -> io::Result<(c_int, std::net::SocketAddr)> {
         sin_zero: [0; 8],
     };
     let mut len = std::mem::size_of::<SockaddrIn>() as u32;
-    let fd = unsafe { accept(lfd, &mut sa, &mut len) };
+    // SOCK_NONBLOCK 直接建非阻塞连接 fd，省掉 fcntl(F_GETFL)+fcntl(F_SETFL)
+    let fd = unsafe { accept4(lfd, &mut sa, &mut len, SOCK_NONBLOCK) };
     if fd < 0 {
         return Err(io::Error::last_os_error());
     }
@@ -410,51 +337,97 @@ pub fn socket_error(fd: c_int) -> io::Result<i32> {
     }
 }
 
-// ── serial port configuration ───────────────────────────────
-// 配置串口为 8N1 原始模式，无流控，非阻塞读取。
-// VMIN=1, VTIME=0 配合 O_NONBLOCK：无数据时 read() 返回 EAGAIN，
-// epoll 在有数据到达前不会报告 EPOLLIN，保证 epoll_wait 正确阻塞。
-// 等价于: stty -F /dev/ttyS0 raw 115200 cs8 -cstopb -parenb -echo min 1 time 0
+// ── 裸线程栈与 TLS ─────────────────────────────────────────────
 
-pub fn configure_serial(fd: c_int, baud_rate: u32) -> io::Result<()> {
-    // 先读取当前串口配置
-    let mut tios: Termios = unsafe { Termios::zeroed() };
-    if unsafe { tcgetattr(fd, &mut tios) } != 0 {
+/// 分配 worker 栈：低地址一页 PROT_NONE 保护页 + stack_size 可读写。
+/// 返回 (映射基址, 总映射长度, 栈区最低地址)；栈顶 = 基址 + 总长度。
+pub fn alloc_stack(stack_size: usize) -> io::Result<(*mut u8, usize, *mut u8)> {
+    let guard = 4096usize;
+    let total = guard + stack_size;
+    let base = unsafe {
+        mmap(
+            std::ptr::null_mut(),
+            total,
+            PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK,
+            -1,
+            0,
+        )
+    };
+    if base as isize == -1 {
         return Err(io::Error::last_os_error());
     }
-
-    // ── cfmakeraw: 将串口设为原始二进制模式 ──
-    // 清除所有输入处理标志，不做任何字符转换
-    tios.c_iflag &= !(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
-    // 关闭输出处理，直接发送原始字节
-    tios.c_oflag &= !OPOST;
-    // 关闭规范模式、回显、信号识别等
-    tios.c_lflag &= !(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
-    // 清除 CSIZE（数据位）、CSTOPB（停止位）、PARENB（校验位），然后设为 8N1
-    tios.c_cflag &= !(CS8 | CSTOPB | PARENB);
-    tios.c_cflag |= CS8;
-
-    // 启用接收器，忽略调制解调器控制线
-    tios.c_cflag |= CREAD | CLOCAL;
-
-    // ── 波特率 ──
-    // 清除旧的 CBAUD 位，设置 BOTHER 以使用 c_ispeed/c_ospeed 指定任意波特率
-    tios.c_cflag &= !CBAUD;
-    tios.c_cflag |= BOTHER;
-    tios.c_ispeed = baud_rate;
-    tios.c_ospeed = baud_rate;
-
-    // ── 读取模式（VMIN + VTIME 组合语义）──
-    //   VMIN=0, VTIME=0 → 非阻塞：read() 立即返回，有数据返回数据，无数据返回 0
-    //   VMIN=0, VTIME=N → 带超时：read() 最多阻塞 N×100ms，超时返回 0
-    //   VMIN=1, VTIME=0 → 阻塞等待：read() 永远阻塞，直到收到至少 1 字节
-    // VMIN=1, VTIME=0: read() 阻塞直到至少 1 字节可用
-    // 配合 O_NONBLOCK: 无数据时返回 EAGAIN，epoll 正确报告 EPOLLIN
-    tios.c_cc[VMIN] = 1;
-    tios.c_cc[VTIME] = 0;
-
-    if unsafe { tcsetattr(fd, TCSANOW, &tios) } != 0 {
-        return Err(io::Error::last_os_error());
+    // 栈向下生长：最低页置 PROT_NONE，溢出即 SIGSEGV 而非静默踩内存
+    if unsafe { mprotect(base, guard, PROT_NONE) } < 0 {
+        let e = io::Error::last_os_error();
+        unsafe { munmap(base, total) };
+        return Err(e);
     }
-    Ok(())
+    Ok((base as *mut u8, total, unsafe { base.add(guard) } as *mut u8))
+}
+
+/// 释放 alloc_stack 分配的映射
+pub fn free_stack(base: *mut u8, total: usize) {
+    unsafe { munmap(base as *mut c_void, total) };
+}
+
+/// ld.so/glibc 的线程 TLS 支持函数（GLIBC_PRIVATE，仅 dlvsym 可取）。
+/// allocate/deallocate 缺一不可；thread_freeres 可选（回收每线程 malloc
+/// 缓存，缺失时每个 worker 生命周期泄漏约 1KB，可接受）。
+pub struct TlsFns {
+    /// void *_dl_allocate_tls(void *mem)：mem=NULL 时自行分配，
+    /// 返回子线程 TCB（即 fs base / clone3 的 tls 参数）
+    pub allocate: usize,
+    /// void _dl_deallocate_tls(void *tcb, bool dealloc_tcb)
+    pub deallocate: usize,
+    /// void __libc_thread_freeres(void)：线程退出前回收 tcache 等
+    pub thread_freeres: usize, // 0 = 不可用
+    /// __libc_single_threaded 全局变量地址（0 = 不可用）：
+    /// 裸 clone3 不经 pthread_create，glibc 不知道进程已多线程，
+    /// malloc 等路径会走无锁单线程快道 → 启动时即置 0
+    pub single_threaded: usize,
+}
+
+/// 取当前线程的 TCB 指针（x86_64 上 fs:0 即 TCB 自指 = fs base）
+#[inline]
+pub fn current_tcb() -> *mut u64 {
+    let p: *mut u64;
+    unsafe { core::arch::asm!("mov {}, fs:0", out(reg) p, options(nostack, pure, readonly)) };
+    p
+}
+
+/// 解析 ld.so/glibc 私有 TLS 符号；找不到 allocate/deallocate 返回 None
+pub fn resolve_tls_fns() -> Option<TlsFns> {
+    unsafe {
+        // RTLD_DEFAULT = NULL：在全局符号 scope（含 ld.so 自身）中查找
+        let alloc = dlvsym(
+            std::ptr::null_mut(),
+            c"_dl_allocate_tls".as_ptr(),
+            c"GLIBC_PRIVATE".as_ptr(),
+        );
+        let dealloc = dlvsym(
+            std::ptr::null_mut(),
+            c"_dl_deallocate_tls".as_ptr(),
+            c"GLIBC_PRIVATE".as_ptr(),
+        );
+        if alloc.is_null() || dealloc.is_null() {
+            return None;
+        }
+        let freeres = dlvsym(
+            std::ptr::null_mut(),
+            c"__libc_thread_freeres".as_ptr(),
+            c"GLIBC_PRIVATE".as_ptr(),
+        );
+        let single = dlvsym(
+            std::ptr::null_mut(),
+            c"__libc_single_threaded".as_ptr(),
+            c"GLIBC_2.32".as_ptr(),
+        );
+        Some(TlsFns {
+            allocate: alloc as usize,
+            deallocate: dealloc as usize,
+            thread_freeres: freeres as usize,
+            single_threaded: single as usize,
+        })
+    }
 }
