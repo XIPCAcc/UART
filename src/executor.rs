@@ -16,15 +16,8 @@
 //     会继续 pop，队列非空期间不存在「无人消费」的窗口）；关闭/shutdown
 //     标志由 worker 0 的 epoll_wait 超时（WORKER_IO_WAIT_MS）兜底轮询
 //
-// 动态 worker 用裸 clone3 创建（不用 std::thread：每线程约 17 次 glibc
-// NPTL/Rust std 自举系统调用全部省掉，生命周期只剩 mmap+mprotect+clone3
-// +exit 共 4 次）：
-//   - 栈自行 mmap（低地址 PROT_NONE 保护页），退出后由 worker 0/收尾路径
-//     借 CLONE_CHILD_CLEARTID 清零的 tid 槽位判断死亡并 munmap 回收
-//   - TLS 用 ld.so 的 _dl_allocate_tls 建立（glibc malloc 的 tcache、errno
-//     依赖完整 TLS），回收时 _dl_deallocate_tls
-//   - 裸线程没有完整 pthread 描述符：禁止 std::io 打印与 thread::current()
-//     （logger 已改为直接 write(2)，panic hook 亦同）
+// 动态 worker 用 std::thread::spawn 创建（栈大小 WORKER_STACK_SIZE），
+// 退出后由 block_on 收尾路径 join 干净
 //
 // 动态扩缩容（负载随时间波动，如定时投放的爬虫任务）：
 //   - 扩容：任务入队时按 队列深度 / GROW_TASKS_PER_WORKER 向上取整推算所需
@@ -36,7 +29,7 @@
 //   - 忙时 tick（类似 tokio 的周期 park）：即使队列持续非空，worker 0 每隔
 //     IO_TICK 也会用 timeout=0 非阻塞轮询一次 epoll，收割已就绪的 I/O 事件，
 //     避免等 I/O 的任务被持续到达的就绪任务饿死
-//   - worker 0 在空闲轮次收割已退出 worker 的栈与 TLS（tid 被内核清零的槽位）
+//   - worker 0 在空闲轮次 join 已退出的动态 worker（回收线程句柄）
 //
 // Task 并发协议（无锁状态机，单 AtomicU8 CAS，poll 不持锁）：
 //   - QUEUED:   在就绪队列中（防止重复入队）
@@ -53,8 +46,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
-#[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-use std::sync::atomic::AtomicI32;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use std::time::{Duration, Instant};
@@ -62,8 +53,6 @@ use std::time::{Duration, Instant};
 use crate::log;
 use crate::reactor::Reactor;
 use crate::signal;
-#[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-use crate::sys;
 
 // ── 全局执行器指针 ─────────────────────────────────────────────
 
@@ -109,27 +98,9 @@ static PUSH_RR: AtomicUsize = AtomicUsize::new(0);
 /// worker 启动时分配本地队列下标的计数器（worker 0 固定为 0）
 static Q_ASSIGN: AtomicUsize = AtomicUsize::new(1);
 
-/// 裸 worker 栈大小（不含 4KB 保护页）。crawler future 栈帧很小，2MB
-/// 与 std 线程默认一致；虚拟内存惰性分配，不占物理页
+/// 动态 worker 栈大小。crawler future 栈帧很小，2MB 与 std 线程默认一致；
+/// 虚拟内存惰性分配，不占物理页
 const WORKER_STACK_SIZE: usize = 2 << 20;
-
-// ── 裸 clone3 worker 槽位 ──────────────────────────────────────
-// 每个动态 worker 占一个槽位，记录其栈映射与 TLS 以便回收。
-// tid 槽由内核直接写：clone3 时写入子 tid（CLONE_CHILD_SETTID），
-// 线程退出时清零并 futex 唤醒（CLONE_CHILD_CLEARTID）——回收方读到
-// in_use && tid==0 即知线程已死，可安全 munmap 栈 + 释放 TLS。
-
-#[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-struct WorkerSlot {
-    in_use: bool,
-    /// 内核直写（见上）；AtomicI32 与 i32 布局相同，地址直接给 clone3
-    tid: AtomicI32,
-    /// mmap 基址（含保护页）与总映射长度
-    map_base: usize,
-    map_len: usize,
-    /// _dl_allocate_tls 返回的 TCB 指针
-    tls: usize,
-}
 
 // ── Vyukov 有界 MPMC 无锁队列 ──────────────────────────────────
 // 经典算法（Dmitry Vyukov bounded MPMC queue）：
@@ -283,13 +254,6 @@ impl Ring {
             }
         }
     }
-
-    /// 近似深度（观测用）。头尾计数器单调递增，差值即已入队未出队数。
-    fn len(&self) -> usize {
-        let t = self.tail.0.load(Ordering::Relaxed);
-        let h = self.head.0.load(Ordering::Relaxed);
-        t.saturating_sub(h)
-    }
 }
 
 // ── Task（无锁状态机）──────────────────────────────────────────
@@ -336,30 +300,9 @@ pub struct Executor {
     /// 动态 worker 数（不含 worker 0）
     active_workers: AtomicUsize,
     is_shutdown: AtomicBool,
-    /// 动态 worker 槽位（容量 max_workers-1，创建后不再 realloc，
-    /// tid 地址交给内核直写，必须稳定）
-    #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-    worker_slots: Mutex<Box<[WorkerSlot]>>,
-    /// 已退出 worker 的栈缓存（等价 glibc 线程栈缓存）：(mmap 基址, 映射总长)，
-    /// 下次扩容直接复用。只缓存栈映射——TCB/TLS 不复用：实测复用 TCB 会在
-    /// 高频率创建销毁下触发 glibc 堆损坏（malloc_consolidate: invalid chunk
-    /// size，thread_freeres 只清理 tcache/thread_arena 等部分 TLS 状态），
-    /// TLS 每次由 _dl_allocate_tls 全新分配（纯用户态操作，无系统调用）
-    #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-    stack_cache: Mutex<Vec<(usize, usize)>>,
     next_worker_id: AtomicUsize,
-    /// ld.so/glibc 的 TLS 支持函数（GLIBC_PRIVATE 符号，启动时解析）
-    #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-    tls_fns: sys::TlsFns,
-    /// std::thread 模式的 worker 句柄（workers-thread / workers-pool）
-    #[cfg(any(feature = "workers-thread", feature = "workers-pool"))]
+    /// 动态 worker 的线程句柄，收尾与到期回收用
     thread_handles: Mutex<Vec<std::thread::JoinHandle<()>>>,
-    /// workers-pool：当前 parked 的 worker 句柄，push 时 unpark 一个
-    #[cfg(feature = "workers-pool")]
-    pool_idle: Mutex<Vec<std::thread::Thread>>,
-    /// workers-pool：池是否已初始化
-    #[cfg(feature = "workers-pool")]
-    pool_ready: AtomicBool,
     /// 累计 spawn 的任务数（观测用）
     spawned_total: AtomicUsize,
     /// 累计执行完成（Poll::Ready）的任务数（观测用）
@@ -373,29 +316,6 @@ impl Executor {
         let max_workers = std::thread::available_parallelism()
             .map(|v| v.get())
             .unwrap_or(1);
-        #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-        let tls_fns = {
-            let tls_fns = sys::resolve_tls_fns()
-                .expect("ld.so 未导出 _dl_allocate_tls/_dl_deallocate_tls，无法创建裸 clone3 worker");
-            // 裸 clone3 不经 pthread_create，glibc 的 __libc_single_threaded 保持
-            // 为 1，malloc 等会走无锁单线程快道 → 多 worker 并发分配即堆损坏。
-            // 在创建任何 worker 前置 0，强制走带锁路径。
-            if tls_fns.single_threaded != 0 {
-                unsafe { *(tls_fns.single_threaded as *mut u8) = 0 };
-            }
-            tls_fns
-        };
-        #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-        let slots = (0..max_workers.saturating_sub(1))
-            .map(|_| WorkerSlot {
-                in_use: false,
-                tid: AtomicI32::new(0),
-                map_base: 0,
-                map_len: 0,
-                tls: 0,
-            })
-            .collect::<Vec<_>>()
-            .into_boxed_slice();
         Ok(Executor {
             locals:      (0..max_workers)
                 .map(|_| Ring::new(LOCAL_CAP))
@@ -407,19 +327,8 @@ impl Executor {
             max_workers,
             active_workers: AtomicUsize::new(0),
             is_shutdown:    AtomicBool::new(false),
-            #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-            worker_slots:   Mutex::new(slots),
-            #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-            stack_cache:    Mutex::new(Vec::new()),
             next_worker_id: AtomicUsize::new(1),
-            #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-            tls_fns,
-            #[cfg(any(feature = "workers-thread", feature = "workers-pool"))]
             thread_handles: Mutex::new(Vec::new()),
-            #[cfg(feature = "workers-pool")]
-            pool_idle:      Mutex::new(Vec::new()),
-            #[cfg(feature = "workers-pool")]
-            pool_ready:     AtomicBool::new(false),
             spawned_total:   AtomicUsize::new(0),
             completed_total: AtomicUsize::new(0),
             panicked:       Mutex::new(None),
@@ -465,14 +374,6 @@ impl Executor {
         }
         let qlen = self.queued_total.fetch_add(1, Ordering::Relaxed) + 1;
         self.maybe_grow(qlen);
-        // 常驻池：先入队再唤醒一个 parked worker。
-        // 「unpark 令牌可粘住」保证与 pool_park 的「登记后复查队列」不漏唤醒
-        #[cfg(feature = "workers-pool")]
-        {
-            if let Some(t) = self.pool_idle.lock().unwrap().pop() {
-                t.unpark();
-            }
-        }
     }
 
     /// 取下一个任务：本地队列 → 全局溢出 → 扫描窃取他人队列。
@@ -508,159 +409,37 @@ impl Executor {
     /// 而空建一个马上退出的线程。desired 超过现有劳动力才起新 worker；
     /// 未达核数上限前每次调用最多起 1 个（burst 连续入队会逐步扩满）。
     fn maybe_grow(&'static self, qlen: usize) {
-        #[cfg(feature = "workers-pool")]
-        {
-            // 常驻池已在 block_on 启动时建满，无需按需扩容
-            let _ = qlen;
-        }
-        #[cfg(not(feature = "workers-pool"))]
-        {
-            if self.is_shutdown.load(Ordering::Relaxed) {
-                return;
-            }
-            let have = self.active_workers.load(Ordering::Relaxed) + 1; // +1 = worker 0
-            let desired = (qlen + GROW_TASKS_PER_WORKER - 1) / GROW_TASKS_PER_WORKER;
-            if desired <= have {
-                return;
-            }
-            let cap = self.max_workers.saturating_sub(1); // 动态 worker 名额
-            let mut a = self.active_workers.load(Ordering::Relaxed);
-            while a < cap {
-                match self.active_workers.compare_exchange_weak(
-                    a,
-                    a + 1,
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                ) {
-                    Ok(_) => {
-                        self.spawn_worker();
-                        return;
-                    }
-                    Err(x) => a = x,
-                }
-            }
-        }
-    }
-
-    /// 用裸 clone3 起一个动态 worker。栈自行 mmap（带保护页），TLS 由
-    /// ld.so 的 _dl_allocate_tls 建立；线程退出时内核清零槽位 tid，
-    /// 由 reap 路径回收栈与 TLS（无 JoinHandle 可 join）。
-    /// 失败时回滚 active_workers 计数并降级为"本次不扩容"。
-    #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-    fn spawn_worker(&'static self) {
-        let id = self.next_worker_id.fetch_add(1, Ordering::Relaxed);
-        log!(
-            "[WORKER] create id={id} (active workers: {}, max: {})",
-            self.active_workers.load(Ordering::Relaxed) + 1,
-            self.max_workers
-        );
-        let mut slots = self.worker_slots.lock().unwrap();
-        // 顺带收割已退出的 worker，腾出槽位
-        self.reap_locked(&mut slots);
-        let Some(slot) = slots.iter_mut().find(|s| !s.in_use) else {
-            // 无空位（不应发生：maybe_grow 按 max_workers 封顶）——放弃本次扩容
-            self.active_workers.fetch_sub(1, Ordering::Relaxed);
+        if self.is_shutdown.load(Ordering::Relaxed) {
             return;
-        };
-        if let Err(e) = self.create_raw_worker(slot, id) {
-            crate::elog!("[WORKER] raw clone3 spawn failed: {e}");
-            self.active_workers.fetch_sub(1, Ordering::Relaxed);
         }
-    }
-
-    /// 在指定槽位上创建裸 worker 线程（调用方持有 worker_slots 锁，
-    /// 保证槽位地址稳定且回收方不会并发访问）
-    #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-    fn create_raw_worker(&self, slot: &mut WorkerSlot, id: usize) -> std::io::Result<()> {
-        // 优先复用栈缓存（等价 glibc 的线程栈缓存），省掉每次
-        // mmap+mprotect/munmap；TLS 一律全新分配（复用 TCB 会污染 malloc
-        // 状态，见 stack_cache 字段注释）
-        let cached = self.stack_cache.lock().unwrap().pop();
-        let (base, map_len) = match cached {
-            Some((b, l)) => (b as *mut u8, l),
-            None => {
-                let (base, map_len, _stack_low) = sys::alloc_stack(WORKER_STACK_SIZE)?;
-                (base, map_len)
-            }
-        };
-        let tls = {
-            let allocate: unsafe extern "C" fn(
-                *mut std::ffi::c_void,
-            ) -> *mut std::ffi::c_void =
-                unsafe { std::mem::transmute(self.tls_fns.allocate) };
-            let tls = unsafe { allocate(null_mut()) };
-            if tls.is_null() {
-                if cached.is_none() {
-                    sys::free_stack(base, map_len);
-                } else {
-                    // 复用的栈分配 TLS 失败：放回缓存，不 munmap
-                    self.stack_cache.lock().unwrap().push((base as usize, map_len));
+        let have = self.active_workers.load(Ordering::Relaxed) + 1; // +1 = worker 0
+        let desired = (qlen + GROW_TASKS_PER_WORKER - 1) / GROW_TASKS_PER_WORKER;
+        if desired <= have {
+            return;
+        }
+        let cap = self.max_workers.saturating_sub(1); // 动态 worker 名额
+        let mut a = self.active_workers.load(Ordering::Relaxed);
+        while a < cap {
+            match self.active_workers.compare_exchange_weak(
+                a,
+                a + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    self.spawn_worker();
+                    return;
                 }
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "_dl_allocate_tls returned NULL",
-                ));
+                Err(x) => a = x,
             }
-            // _dl_allocate_tls 只初始化 dtv 与 static TLS 块，TCB 头字段
-            // （nptl 路径由 TLS_INIT_TP 填写）需自行补齐：
-            //   [0x00] tcb 自指 —— __errno_location 等 IE-model TLS 取址的前提
-            //   [0x10] self（无完整 pthread 描述符，按惯例指向自身）
-            //   [0x18] multiple_threads=1（gscope_flag 高 32 位随之清零）
-            //   [0x20..0x38] sysinfo / stack_guard / pointer_guard 从本线程复制
-            //   [0x08] dtv 已由 _dl_allocate_tls 填好，不可覆盖
-            let my_tcb = sys::current_tcb();
-            let tcb = tls as *mut u64;
-            unsafe {
-                tcb.add(0).write(tls as u64);
-                tcb.add(2).write(tls as u64);
-                tcb.add(3).write(1);
-                tcb.add(4).write(my_tcb.add(4).read());
-                tcb.add(5).write(my_tcb.add(5).read());
-                tcb.add(6).write(my_tcb.add(6).read());
-            }
-            tls
-        };
-        let stack_low = unsafe { base.add(4096) }; // 跳过保护页
-        // CLONE_CHILD_SETTID 的内核写入由子线程首次调度时（schedule_tail）
-        // 完成，clone3 返回时 tid 槽尚未被写入。预置哨兵 -1 区分
-        // 「未调度」与「已死（内核 CLONE_CHILD_CLEARTID 清零）」：
-        // 缺了它，reap 会在子线程还没跑起来时就把栈和 TLS 回收掉。
-        slot.tid.store(-1, Ordering::Relaxed);
-        let args = sys::CloneArgs {
-            flags: sys::THREAD_CLONE_FLAGS,
-            pidfd: 0,
-            child_tid: &slot.tid as *const AtomicI32 as u64,
-            parent_tid: 0,
-            exit_signal: 0,
-            stack: stack_low as u64,
-            stack_size: WORKER_STACK_SIZE as u64,
-            tls: tls as u64,
-            set_tid: 0,
-            set_tid_size: 0,
-            cgroup: 0,
-        };
-        let r = unsafe { sys::raw_clone3(&args, raw_worker_entry as usize, id) };
-        if r <= 0 {
-            let e = std::io::Error::from_raw_os_error((-r) as i32);
-            let deallocate: unsafe extern "C" fn(*mut std::ffi::c_void, i32) =
-                unsafe { std::mem::transmute(self.tls_fns.deallocate) };
-            unsafe { deallocate(tls, 1) };
-            sys::free_stack(base, map_len);
-            return Err(e);
         }
-        slot.in_use = true;
-        slot.map_base = base as usize;
-        slot.map_len = map_len;
-        slot.tls = tls as usize;
-        Ok(())
     }
 
-    // ── workers-thread：std::thread 动态 worker（基准对比用）──────────
-    #[cfg(feature = "workers-thread")]
+    /// 起一个动态 worker 线程（std::thread）；失败时回滚 active_workers 计数
     fn spawn_worker(&'static self) {
         let id = self.next_worker_id.fetch_add(1, Ordering::Relaxed);
         log!(
-            "[WORKER] create id={id} (std::thread, active: {})",
+            "[WORKER] create id={id} (active: {})",
             self.active_workers.load(Ordering::Relaxed)
         );
         match std::thread::Builder::new()
@@ -675,68 +454,7 @@ impl Executor {
         }
     }
 
-    // ── workers-pool：启动时建满常驻 worker ────────────────────────
-    #[cfg(feature = "workers-pool")]
-    fn pool_init(&'static self) {
-        if self.pool_ready.swap(true, Ordering::AcqRel) {
-            return;
-        }
-        for id in 1..=self.max_workers.saturating_sub(1) {
-            self.active_workers.fetch_add(1, Ordering::Relaxed);
-            match std::thread::Builder::new()
-                .stack_size(WORKER_STACK_SIZE)
-                .spawn(move || self.thread_worker_body(id))
-            {
-                Ok(h) => self.thread_handles.lock().unwrap().push(h),
-                Err(e) => {
-                    crate::elog!("[WORKER] pool spawn failed: {e}");
-                    self.active_workers.fetch_sub(1, Ordering::Relaxed);
-                }
-            }
-        }
-        log!(
-            "[WORKER] pool ready: {} workers",
-            self.active_workers.load(Ordering::Relaxed)
-        );
-    }
-
-    /// 常驻 worker 空闲：登记自身 → 复查 shutdown/队列 → park。
-    /// push_task 侧在入队后若空闲表非空则 unpark 一个；`Thread::unpark`
-    /// 令牌可粘住，故「入队后 unpark」与「park 前复查」不会丢唤醒。
-    /// shutdown 复查必须放在登记之后：initiate_shutdown 先置标志再
-    /// drain 空闲表，两边这样交错才不会出现"已关停却仍 park"的挂死。
-    #[cfg(feature = "workers-pool")]
-    fn pool_park(&'static self) {
-        let me = std::thread::current();
-        self.pool_idle.lock().unwrap().push(me.clone());
-        let exit = self.is_shutdown.load(Ordering::Acquire);
-        let has_work = self.queued_total.load(Ordering::Acquire) > 0;
-        if exit || has_work {
-            self.pool_idle
-                .lock()
-                .unwrap()
-                .retain(|t| t.id() != me.id());
-            return;
-        }
-        std::thread::park();
-        self.pool_idle
-            .lock()
-            .unwrap()
-            .retain(|t| t.id() != me.id());
-    }
-
-    #[cfg(feature = "workers-pool")]
-    fn pool_unpark_all(&self) {
-        let wakers: Vec<std::thread::Thread> =
-            self.pool_idle.lock().unwrap().drain(..).collect();
-        for t in wakers {
-            t.unpark();
-        }
-    }
-
-    /// std::thread 模式 worker 线程体（动态/pool 共用）：
-    /// panic 兜底传播 + 退出前递减 active_workers
-    #[cfg(any(feature = "workers-thread", feature = "workers-pool"))]
+    /// worker 线程体：panic 兜底传播 + 退出前递减 active_workers
     fn thread_worker_body(&'static self, id: usize) {
         let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.worker_loop(id);
@@ -756,9 +474,6 @@ impl Executor {
     /// （WORKER_IO_WAIT_MS）后看到标志退出，动态 worker 每轮循环头自查。
     fn initiate_shutdown(&self) {
         self.is_shutdown.store(true, Ordering::Release);
-        // 常驻池的 worker 可能在 park 中，必须唤醒才能看到关闭标志
-        #[cfg(feature = "workers-pool")]
-        self.pool_unpark_all();
     }
 
     /// 运行事件循环直到顶层 future 完成（或 TERM 信号使其提前完成）
@@ -772,9 +487,6 @@ impl Executor {
         // 没有专用 IO 线程：worker 0（本线程）队列空时亲自跑 epoll_wait。
         // 不预起动态 worker：队列一空就立即退出，预起只会白白创建再销毁，
         // 其余 worker 全部由 spawn 的扩容路径按需创建。
-        // （workers-pool 例外：常驻池在此一次性建满，运行期不再创建线程）
-        #[cfg(feature = "workers-pool")]
-        self.pool_init();
         // 顶层 future 包成任务：完成时记录结果并触发全局关闭
         let result: Arc<Mutex<Option<R>>> = Arc::new(Mutex::new(None));
         let top = TopFuture {
@@ -785,37 +497,13 @@ impl Executor {
 
         self.worker_loop(0);
 
-        // worker 0 退出说明已 shutdown：把其余 worker 收干净后再关 reactor。
-        //   裸 clone3：无 JoinHandle，等内核把 tid 清零后 munmap 栈 + 释放 TLS
-        //   std::thread：等 active_workers 归零后 join 全部句柄
-        #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-        {
-            // worker 只走纯内存的队列 pop + 非阻塞 syscall，看到 shutdown
-            // 标志后很快退出，自旋等待即可。
-            loop {
-                self.reap_workers();
-                let slots = self.worker_slots.lock().unwrap();
-                if slots.iter().all(|s| !s.in_use) {
-                    break;
-                }
-                drop(slots);
-                std::hint::spin_loop();
-            }
-            // 进程收尾：栈缓存里的映射真正归还内核（munmap）
-            let mut cache = self.stack_cache.lock().unwrap();
-            for (base, len) in cache.drain(..) {
-                sys::free_stack(base as *mut u8, len);
-            }
+        // worker 0 退出说明已 shutdown：等其余 worker 归零后 join 干净再关 reactor。
+        while self.active_workers.load(Ordering::Acquire) != 0 {
+            std::hint::spin_loop();
         }
-        #[cfg(any(feature = "workers-thread", feature = "workers-pool"))]
-        {
-            while self.active_workers.load(Ordering::Acquire) != 0 {
-                std::hint::spin_loop();
-            }
-            let handles: Vec<_> = self.thread_handles.lock().unwrap().drain(..).collect();
-            for h in handles {
-                let _ = h.join();
-            }
+        let handles: Vec<_> = self.thread_handles.lock().unwrap().drain(..).collect();
+        for h in handles {
+            let _ = h.join();
         }
         self.reactor.shutdown();
 
@@ -868,23 +556,13 @@ impl Executor {
             match self.next_task(my_q) {
                 Some(t) => self.poll_task(id, t),
                 None if id != 0 => {
-                    #[cfg(feature = "workers-pool")]
-                    {
-                        // 常驻池：不退出，登记到空闲表后 park 等唤醒
-                        self.pool_park();
-                        continue;
-                    }
-                    #[cfg(not(feature = "workers-pool"))]
-                    {
-                        // 任务不足：立即退出线程释放 CPU 核
-                        // （active_workers 由线程入口统一递减：裸 clone3 在
-                        //   raw_worker_entry，std::thread 在 thread_worker_body）
-                        log!("[WORKER] exit id={id} queue empty");
-                        return;
-                    }
+                    // 任务不足：立即退出线程释放 CPU 核
+                    // （active_workers 由线程入口 thread_worker_body 统一递减）
+                    log!("[WORKER] exit id={id} queue empty");
+                    return;
                 }
                 None => {
-                    // worker 0：先回收已退出 worker 的栈与 TLS，再兼任 reactor。
+                    // worker 0：先 join 已退出的动态 worker，再兼任 reactor。
                     // 队列此刻为空即无待消费任务；新任务到达必伴随 epoll 事件
                     // （监听 fd 或任务 fd 就绪），epoll_wait 会立即返回。
                     self.reap_workers();
@@ -918,41 +596,8 @@ impl Executor {
         }
     }
 
-    /// 回收已退出的动态 worker（tid 被内核清零的槽位）：munmap 栈 +
-    /// _dl_deallocate_tls 释放 TCB/dtv。worker 0 空闲轮次与扩容前调用。
-    #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-    fn reap_workers(&self) {
-        let mut slots = self.worker_slots.lock().unwrap();
-        self.reap_locked(&mut slots);
-    }
-
-    #[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-    fn reap_locked(&self, slots: &mut [WorkerSlot]) {
-        let deallocate: unsafe extern "C" fn(*mut std::ffi::c_void, i32) =
-            unsafe { std::mem::transmute(self.tls_fns.deallocate) };
-        // 缓存上限 = 动态 worker 名额：最多缓存一整套栈，超出部分即时回收
-        let cap = self.max_workers.saturating_sub(1);
-        let mut cache = self.stack_cache.lock().unwrap();
-        for s in slots.iter_mut() {
-            // tid==0 只可能是内核 CLONE_CHILD_CLEARTID 清零（创建时预置 -1，
-            // 首次调度被覆写为真实 tid），此时线程已在内核退出路径，
-            // 不会再触碰用户栈/TLS，可安全回收
-            if s.in_use && s.tid.load(Ordering::Acquire) == 0 {
-                // TLS 一律释放（不复用）；栈映射入缓存复用，缓存满则 munmap
-                unsafe { deallocate(s.tls as *mut std::ffi::c_void, 1) };
-                if cache.len() < cap {
-                    cache.push((s.map_base, s.map_len));
-                } else {
-                    sys::free_stack(s.map_base as *mut u8, s.map_len);
-                }
-                s.in_use = false;
-            }
-        }
-    }
-
-    /// std::thread 模式的回收：join 掉已退出的 worker，防止句柄无限累积。
+    /// 回收已退出的动态 worker：join 掉句柄，防止无限累积。
     /// （线程栈由 glibc 的栈缓存兜底复用，无需手工 munmap）
-    #[cfg(any(feature = "workers-thread", feature = "workers-pool"))]
     fn reap_workers(&self) {
         let mut handles = self.thread_handles.lock().unwrap();
         let mut i = 0;
@@ -1036,40 +681,6 @@ impl Executor {
 }
 
 // ── 顶层 future 包装 ───────────────────────────────────────────
-
-/// 裸 clone3 worker 的线程入口（trampoline 以 C ABI 调用，arg = worker id）。
-///
-/// 本线程不是 std::thread 创建的：pthread 描述符只有 ld.so 分配的 TCB，
-/// 没有完整 struct pthread——禁止任何依赖 `thread::current()` 的 std 设施
-/// （std::io 的 print!/eprintln!、thread::park 等，它们会注册 TLS 析构并
-/// 越界写 pthread 字段）。日志走 logger 的直接 write(2)，panic 由自定义
-/// hook（同为直接 write）打印。glibc malloc/errno 可用（TLS 完整）。
-#[cfg(not(any(feature = "workers-thread", feature = "workers-pool")))]
-extern "C" fn raw_worker_entry(arg: usize) {
-    // worker_loop 之外的 panic（状态机不变量等执行器 bug）不能被 trampoline
-    // 接住（asm 无法 unwind）：这里兜底，维持与 task panic 相同的传播语义
-    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        executor().worker_loop(arg);
-    }));
-    if let Err(p) = r {
-        let ex = executor();
-        let mut g = ex.panicked.lock().unwrap();
-        if g.is_none() {
-            *g = Some(p);
-        }
-        drop(g);
-        ex.initiate_shutdown();
-    }
-    // 退出前递减动态 worker 计数（worker_loop 不再自行递减）
-    executor().active_workers.fetch_sub(1, Ordering::Relaxed);
-    // 回收 glibc 每线程 malloc 缓存（tcache 等）；此后本线程不再分配，
-    // trampoline 直接 exit(60)
-    let freeres = executor().tls_fns.thread_freeres;
-    if freeres != 0 {
-        let f: unsafe extern "C" fn() = unsafe { std::mem::transmute(freeres) };
-        unsafe { f() };
-    }
-}
 
 struct TopFuture<R> {
     f:      Pin<Box<dyn Future<Output = R> + Send>>,

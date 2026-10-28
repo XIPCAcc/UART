@@ -1,133 +1,92 @@
 #!/bin/bash
-# 突发批墙钟基准：用 daemon 内部的 [BATCH] 计时（IN_FLIGHT 0→1 记起点、
-# 归 0 打印墙钟），避免外部「CPU 静默判定」引入的判定常数污染。
+# 批墙钟测量：发 burst 条请求 × rounds 轮，取 daemon 内部 [BATCH] 计时。
+#
+# 墙钟由 daemon 自身打印（IN_FLIGHT 0→1 记批起点、归 0 打印 wall），
+# 不经外部观测，无 harness 判定常数。
 #
 # 用法：
-#   ./bench.sh <name> <binary> <burst> <rounds> [-- daemon 额外参数...]
-#
-# 示例：
-#   ./bench.sh old  ./target/release/uart-matmul 32 100 -- --mode crawler
-#   ./bench.sh raw  /tmp/cmp/raw/crawler-daemon   32 100
+#   ./bench.sh [burst] [rounds] [-- daemon 额外参数...]
 #
 # 环境变量：
-#   PORT=9090               daemon 控制端口
-#   SRV=127.0.0.1:19092     爬虫目标地址（测试用 echo 服务端）
-#   TW_WAIT=1               开跑前等待 TIME_WAIT 降到 TW_MAX 以下
-#   TW_MAX=500              TIME_WAIT 阈值
-#   HANG_SECS=10            单轮无进展判挂起（超时则 kill 并重启 daemon）
-#
-# 注意：被测二进制应使用默认构建（verbose-log 关闭），见 build.sh。
+#   BIN=target/release/crawler-daemon   被测二进制（应用 build.sh 的默认构建，
+#                                       verbose-log 必须关闭，否则 write 污染统计）
+#   PORT=9090   SRV=127.0.0.1:19092     daemon 监听 / 爬虫目标
+#   OUT=/tmp/bench_result.csv
 set -u
 
-if [ $# -lt 4 ]; then
-    echo "用法: $0 <name> <binary> <burst> <rounds> [-- daemon 额外参数...]" >&2
-    exit 2
-fi
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+BURST=${1:-32}
+ROUNDS=${2:-100}
+BIN=${BIN:-$ROOT/target/release/crawler-daemon}
+PORT=${PORT:-9090}
+SRV=${SRV:-127.0.0.1:19092}
+OUT=${OUT:-/tmp/bench_result.csv}
+TMP=${TMPDIR:-/tmp}
 
-NAME=$1; BIN=$2; BURST=$3; ROUNDS=$4; shift 4
+shift $(( $# >= 1 ? 1 : 0 )) 2>/dev/null || true
+shift $(( $# >= 1 ? 1 : 0 )) 2>/dev/null || true
 EXTRA=()
 if [ "${1:-}" = "--" ]; then shift; EXTRA=("$@"); fi
 
-PORT=${PORT:-9090}
-SRV=${SRV:-127.0.0.1:19092}
-TW_WAIT=${TW_WAIT:-1}
-TW_MAX=${TW_MAX:-500}
-HANG_SECS=${HANG_SECS:-10}
-
-TMP=${TMPDIR:-/tmp}
-ERR=$TMP/bench_${NAME}.err
-CSV=$TMP/bench_${NAME}.csv
-rm -f "$ERR" "$CSV"
-: > "$CSV"
-
-daemon_pid() { ss -ltnp 2>/dev/null | grep ":$PORT " | grep -oP 'pid=\K\d+' | head -1; }
-cpu_ticks()  { awk '{print $14+$15}' "/proc/$1/stat" 2>/dev/null || echo 0; }
-
-wait_tw_clear() {
-    [ "$TW_WAIT" = "1" ] || return 0
-    for _ in $(seq 1 180); do
-        n=$(ss -tan 2>/dev/null | grep -c 'TIME-WAIT')
-        [ "$n" -lt "$TW_MAX" ] && return 0
-        sleep 0.5
-    done
-    echo "WARN: TIME_WAIT 仍有 $(ss -tan | grep -c 'TIME-WAIT') 条" >&2
-}
-
-start_daemon() {
-    "$BIN" --listen "127.0.0.1:$PORT" "${EXTRA[@]}" >>"$ERR" 2>&1 &
-    DPID=$!
-    for _ in $(seq 1 200); do
-        ss -ltn 2>/dev/null | grep -q ":$PORT " && break
-        sleep 0.05
-    done
-    sleep 0.1
-}
-
-if [ ! -x "$BIN" ]; then
-    echo "错误: 二进制不存在或不可执行: $BIN" >&2
-    exit 1
-fi
-# 基准口径必须关闭详细日志：verbose-log 构建的 write/stderr 会污染统计
-if strings "$BIN" 2>/dev/null | grep -q '\[DAEMON\] req#'; then
-    echo "警告: $BIN 含详细日志字符串（可能用 --features verbose-log 构建），" >&2
-    echo "      基准数据会被日志的 write 与 stderr 阻塞污染；请用 build.sh 默认构建。" >&2
+[ -x "$BIN" ] || { echo "ERROR: 二进制不存在: $BIN（先跑 ./build.sh）" >&2; exit 1; }
+if strings "$BIN" | grep -q '\[DAEMON\] req#'; then
+    echo "WARN: 该二进制带 verbose-log，日志 write 会污染统计" >&2
 fi
 if ! ss -ltn 2>/dev/null | grep -q ":${SRV##*:} "; then
-    echo "警告: 目标端 $SRV 未监听，请先启动测试服务端" >&2
+    echo "WARN: 目标端 $SRV 未监听，所有任务将连接失败" >&2
 fi
 
-wait_tw_clear
-start_daemon
-C0=$(cpu_ticks "$DPID")
+: > "$OUT"
+rm -f "$TMP"/bench.err*
+
+"$BIN" --listen "127.0.0.1:$PORT" ${EXTRA[@]+"${EXTRA[@]}"} >"$TMP/bench.err" 2>&1 &
+DPID=$!
+trap 'kill -9 "$DPID" 2>/dev/null' EXIT
+for _ in $(seq 1 200); do
+    ss -ltn 2>/dev/null | grep -q ":$PORT " && break
+    sleep 0.02
+done
+sleep 0.1
 
 hangs=0
-r=1
-while [ "$r" -le "$ROUNDS" ]; do
-    before=$(grep -c '\[BATCH\]' "$ERR" 2>/dev/null || true)
+for r in $(seq 1 "$ROUNDS"); do
+    before=$(grep -c '\[BATCH\]' "$TMP/bench.err" 2>/dev/null || true)
     yes "$SRV /" | head -n "$BURST" | nc -N -w5 127.0.0.1 "$PORT" >/dev/null 2>&1
-
-    waited=0
-    progressed=0
-    max_wait=$((HANG_SECS * 20))
-    while [ "$waited" -le "$max_wait" ]; do
-        now=$(grep -c '\[BATCH\]' "$ERR" 2>/dev/null || true)
-        if [ "$now" -gt "$before" ]; then progressed=1; break; fi
-        sleep 0.05
-        waited=$((waited + 1))
+    t=0
+    while true; do
+        now=$(grep -c '\[BATCH\]' "$TMP/bench.err" 2>/dev/null || true)
+        [ "$now" -gt "$before" ] && break
+        sleep 0.05; t=$((t + 1))
+        if [ "$t" -gt 200 ]; then
+            hangs=$((hangs + 1))
+            echo "WARN: 第 $r 轮挂起，重启 daemon" >&2
+            kill -9 "$DPID" 2>/dev/null; wait "$DPID" 2>/dev/null
+            "$BIN" --listen "127.0.0.1:$PORT" ${EXTRA[@]+"${EXTRA[@]}"} >>"$TMP/bench.err" 2>&1 &
+            DPID=$!
+            sleep 0.3
+            continue 2
+        fi
     done
-
-    if [ "$progressed" = "1" ]; then
-        # 该轮新增的 [BATCH] 行求和（部分方案可能把一批拆成多段）
-        w=$(tail -n +$((before + 1)) "$ERR" | grep -oP '\[BATCH\] wall=\K\d+' | paste -sd+ | bc)
-        echo "$NAME,burst=$BURST,round=$r,wall_us=$w" >> "$CSV"
-        r=$((r + 1))
-    else
-        hangs=$((hangs + 1))
-        echo "WARN: $NAME 第 $r 轮 ${HANG_SECS}s 无进展，判挂起，重启 daemon" >&2
-        kill -9 "$DPID" 2>/dev/null; wait "$DPID" 2>/dev/null
-        mv "$ERR" "$ERR.hang$hangs"
-        start_daemon
-        C0=$(cpu_ticks "$DPID")
-    fi
+    # 一批可能被拆成多段（批内归零），按片段求和
+    w=$(tail -n +$((before + 1)) "$TMP/bench.err" \
+        | grep -oP '\[BATCH\] wall=\K\d+' | paste -sd+ | bc)
+    echo "burst=$BURST,round=$r,wall_us=$w" >> "$OUT"
 done
 
-C1=$(cpu_ticks "$DPID")
-kill -TERM "$DPID" 2>/dev/null
-wait "$DPID" 2>/dev/null
+kill -TERM "$DPID" 2>/dev/null; wait "$DPID" 2>/dev/null
+trap - EXIT
 
-echo "$NAME,burst=$BURST,cpu_ticks=$((C1 - C0)),hangs=$hangs"
-
-echo "--- 汇总（$NAME, burst=$BURST, rounds=$ROUNDS, hangs=$hangs）---"
-awk -F'wall_us=' '
-/wall_us=/ { v[n++] = $2 + 0 }
-END {
-    if (n == 0) { print "无数据"; exit }
-    for (i = 0; i < n; i++)
-        for (j = i + 1; j < n; j++)
-            if (v[j] < v[i]) { t = v[i]; v[i] = v[j]; v[j] = t }
-    s = 0
-    for (i = 0; i < n; i++) s += v[i]
-    printf "median=%dus  mean=%dus  min=%dus  max=%dus  p25=%dus  p75=%dus\n",
-        v[int(n/2)], s/n, v[0], v[n-1], v[int(n/4)], v[int(n*3/4)]
-}' "$CSV"
-echo "原始数据: $CSV"
+# 统计（mawk 无 asort，用 sort -n 排序后取位次）
+mapfile -t v < <(grep -oP 'wall_us=\K\d+' "$OUT" | sort -n)
+n=${#v[@]}
+if [ "$n" -gt 0 ]; then
+    med=${v[$(( (n - 1) / 2 ))]}
+    p25=${v[$(( (n - 1) / 4 ))]}
+    p75=${v[$(( (3 * (n - 1)) / 4 ))]}
+    sum=$(IFS=+; echo "$((${v[*]}))")
+    echo "burst=$BURST rounds=$n hangs=$hangs"
+    echo "median=${med}us  mean=$((sum / n))us  min=${v[0]}us  max=${v[$((n-1))]}us  p25=${p25}us  p75=${p75}us"
+else
+    echo "无有效数据（hangs=$hangs）"
+fi
+echo "结果: $OUT"
