@@ -9,9 +9,11 @@ edition = "2021"
 # 默认关闭详细日志（log! 编译为空，零格式化、零 write 系统调用）；
 # 调试时 cargo build --features verbose-log。基准测试必须用默认构建。
 verbose-log = []
-# ── 基准对比用的 worker 策略开关（默认=裸 clone3 动态）──
+# ── 以下为基准对比用的 worker 策略开关（互斥，默认=裸 clone3 动态）──
 # 动态 worker 改用 std::thread::spawn（策略不变，仅换线程创建方式）
 workers-thread = []
+# 常驻 worker 池：启动时建满，空闲 park 等唤醒（创建方式同 std::thread）
+workers-pool = []
 
 [profile.release]
 opt-level = 3
