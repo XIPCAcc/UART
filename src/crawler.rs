@@ -116,7 +116,9 @@ async fn handle_request(conn: crate::tcp::AsyncTcpStream, peer: SocketAddr, req_
     }
 }
 
-/// 处理一行爬虫请求：合法则 spawn 爬虫任务并返回 ACK 文本，非法则返回错误提示
+// ── 批处理计时（基准用）：IN_FLIGHT 0→1 记批起点，归 0 打印批墙钟 ──
+// 比外部 harness 的「CPU 静默判定」精确：无 drain 常数、无 nc/shell 噪声
+
 static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
 static IN_FLIGHT: AtomicU64 = AtomicU64::new(0);
 static BATCH_T0_NS: AtomicU64 = AtomicU64::new(0);
@@ -125,20 +127,23 @@ fn now_ns() -> u64 {
     T0.get_or_init(std::time::Instant::now).elapsed().as_nanos() as u64
 }
 
+/// 包装 crawl_one：完成（无论成败）后递减在飞计数，批尾打印批墙钟
 async fn crawl_tracked(addr: SocketAddr, path: String, seq: u32) {
     crawl_one(addr, path, seq).await;
     if IN_FLIGHT.fetch_sub(1, Ordering::AcqRel) == 1 {
         let dt = now_ns() - BATCH_T0_NS.load(Ordering::Relaxed);
-        eprintln!("[BATCH] wall={}us", dt / 1000);
+        elog!("[BATCH] wall={}us", dt / 1000);
     }
 }
 
+/// 处理一行爬虫请求：合法则 spawn 爬虫任务并返回 ACK 文本，非法则返回错误提示
 fn dispatch_line(line: &str, peer: SocketAddr, req_seq: u32) -> String {
     match parse_request(line) {
         Some((addr, path)) => {
             let seq = SEQ.fetch_add(1, Ordering::Relaxed) as u32;
             log!("[DAEMON] req#{req_seq} from {peer}: crawl {addr}{path} as task #{seq}");
             let ack = format!("OK #{seq} {addr}{path}\n");
+            // 批内首个任务记录批起点（fetch_add 返 0 恰一次，无竞态）
             if IN_FLIGHT.fetch_add(1, Ordering::AcqRel) == 0 {
                 BATCH_T0_NS.store(now_ns(), Ordering::Relaxed);
             }

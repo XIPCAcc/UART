@@ -134,10 +134,12 @@ impl Reactor {
         inner.wakers.insert(fd as u64 * 2, waker.clone());
         let cur = inner.fd_events.get(&fd).copied().unwrap_or(0);
         let new = cur | sys::EPOLLIN;
-        if new != cur {
-            inner.fd_events.insert(fd, new);
-            let _ = sys::epoll_mod(inner.epfd, fd, new);
-        }
+        // ET 模式必须无条件 MOD：内核会重新检查就绪状态并重投递边沿。
+        // 否则「数据在 add 后、waker 注册前到达」窗口内的边沿事件会被
+        // wait() 收割后丢弃（waker 表此时为空），任务永久挂起——实测在
+        // 微秒级回包的 echo 服务端下复现（连接滞留 CLOSE-WAIT）
+        inner.fd_events.insert(fd, new);
+        let _ = sys::epoll_mod(inner.epfd, fd, new);
     }
 
     /// 注册等待可写的 waker，将 EPOLLOUT 加入事件掩码
@@ -146,16 +148,19 @@ impl Reactor {
         inner.wakers.insert(fd as u64 * 2 + 1, waker.clone());
         let cur = inner.fd_events.get(&fd).copied().unwrap_or(0);
         let new = cur | sys::EPOLLOUT;
-        if new != cur {
-            inner.fd_events.insert(fd, new);
-            let _ = sys::epoll_mod(inner.epfd, fd, new);
-        }
+        // ET 模式必须无条件 MOD：内核会重新检查就绪状态并重投递边沿。
+        // 否则「数据在 add 后、waker 注册前到达」窗口内的边沿事件会被
+        // wait() 收割后丢弃（waker 表此时为空），任务永久挂起——实测在
+        // 微秒级回包的 echo 服务端下复现（连接滞留 CLOSE-WAIT）
+        inner.fd_events.insert(fd, new);
+        let _ = sys::epoll_mod(inner.epfd, fd, new);
     }
 
-    /// 从 epoll 和 waker 映射中移除 fd
+    /// 从 waker 映射中移除 fd。不发 EPOLL_CTL_DEL：两个调用方
+    /// （AsyncTcpStream/AsyncTcpListener 的 Drop）随后立即 close，
+    /// 内核在 close 时自动将 fd 从 epoll 移除，DEL 是冗余 syscall
     pub fn delete(&self, fd: RawFd) {
         let mut inner = self.inner.lock();
-        let _ = sys::epoll_del(inner.epfd, fd);
         inner.wakers.remove(&(fd as u64 * 2));
         inner.wakers.remove(&(fd as u64 * 2 + 1));
         inner.fd_events.remove(&fd);
